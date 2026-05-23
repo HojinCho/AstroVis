@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AstroVis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="title-block">
+          <p class="eyebrow">Astronomical Data Visualizer</p>
+          <h1>AstroVis</h1>
+          <p class="subtitle">A Simple Visualizer for Astronomical Data.<br>Hojin Cho 2026</p>
+        </div>
+        <div class="file-actions">
+          <label class="theme-switch">
+            <input type="checkbox" id="themeToggle" />
+            <span class="slider"></span>
+            <span class="theme-label">Dark Mode</span>
+          </label>
+          <div class="file-chooser">
+            <button type="button" class="file-button" id="openFileBtn">Open File</button>
+            <div class="file-menu" id="fileMenu">
+              <label class="file-menu-item">
+                <input type="file" id="csvInput" accept=".csv,.tsv,.txt" multiple />
+                <span>CSV / TSV files</span>
+              </label>
+              <label class="file-menu-item">
+                <input type="file" id="fitsInput" accept=".fits,.fit,.fts" multiple />
+                <span>FITS files</span>
+              </label>
+            </div>
+          </div>
+          <p class="hint">
+            Supported formats: CSV, TSV, and FITS (Binary Tables).
+          </p>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabs" aria-label="Open FITS files"></nav>
+
+      <details class="menu-panel" id="menu" open>
+        <summary class="menu-header">
+          <span class="menu-title">Plot Settings</span>
+          <span class="chevron"></span>
+        </summary>
+
+        <div class="menu-content">
+          <section class="controls" id="controls">
+            <!-- First Row: Global Settings -->
+            <div class="control-row row-two">
+              <div class="control">
+                <label for="hduSelect">Table / HDU</label>
+                <select id="hduSelect" aria-label="Table HDU"></select>
+              </div>
+              <div class="control">
+                <label for="plotTypeSelect">Plot type</label>
+                <select id="plotTypeSelect" aria-label="Plot type">
+                  <option value="scatter" selected>Scatter</option>
+                  <option value="spec">Step</option>
+                  <option value="hist1d">Hist (1D)</option>
+                  <option value="hist2d">Hist (2D)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Histogram options (visible only in Hist 1D / 2D modes) -->
+            <div class="control-row hist-only" id="histOptionsRow">
+              <div class="control">
+                <label for="histNBinsInput">X Bins</label>
+                <input type="number" id="histNBinsInput" min="1" max="2000" step="1" value="50" autocomplete="off" />
+              </div>
+              <div class="control hist2d-only" id="histNBinsYControl">
+                <label for="histNBinsYInput">Y Bins</label>
+                <input type="number" id="histNBinsYInput" min="1" max="2000" step="1" value="50" autocomplete="off" />
+              </div>
+              <div class="control hist2d-only" id="histDensityScaleControl">
+                <label for="histDensityScaleSelect">Density Scale</label>
+                <select id="histDensityScaleSelect" aria-label="Density Scale">
+                  <option value="linear" selected>Linear</option>
+                  <option value="log10">Log10</option>
+                  <option value="sinh">Sinh</option>
+                  <option value="asinh">Asinh</option>
+                </select>
+              </div>
+              <div class="control hist2d-only" id="histMarginalControl">
+                <label>Marginal</label>
+                <label class="mini-switch" title="Show marginal X distribution at top of plot">
+                  <input type="checkbox" id="histMarginalToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Show</span>
+                </label>
+              </div>
+            </div>
+
+            <!--
+              Two-column settings grid.
+              Single .v-sep spans all rows for the continuous divider line.
+              Each control is explicitly placed with grid-column + grid-row so that
+              left/right items in the same logical row always share the same CSS row,
+              even when the X-uncertainty row is hidden (scatter-only).
+            -->
+            <div class="settings-grid">
+              <!-- Continuous vertical separator -->
+              <div class="v-sep" aria-hidden="true"></div>
+
+              <!-- Row 1: X select | Y select -->
+              <div class="control" id="xControl">
+                <label for="xSelect">X</label>
+                <select id="xSelect" aria-label="X"></select>
+              </div>
+              <div class="control" id="yControl">
+                <label for="ySelect">Y</label>
+                <select id="ySelect" aria-label="Y"></select>
+              </div>
+
+              <!-- Row 2: X uncertainty (scatter-only) | Y uncertainty (always) -->
+              <div class="control scatter-only" id="xerrContainer">
+                <div class="err-header">
+                  <label>X Uncertainty</label>
+                  <label class="mini-switch" title="Use separate lower / upper σ columns">
+                    <input type="checkbox" id="xerrAsymToggle" />
+                    <span class="mini-slider"></span>
+                    <span class="mini-label">Asym</span>
+                  </label>
+                </div>
+                <select id="xerrSelect" aria-label="X uncertainty"></select>
+                <div class="asym-cols hidden" id="xerrAsymCols">
+                  <div class="asym-col">
+                    <label class="asym-col-label" for="xerrLowerSelect">Lower (−σ)</label>
+                    <select id="xerrLowerSelect" aria-label="X lower uncertainty"></select>
+                  </div>
+                  <div class="asym-col">
+                    <label class="asym-col-label" for="xerrUpperSelect">Upper (+σ)</label>
+                    <select id="xerrUpperSelect" aria-label="X upper uncertainty"></select>
+                  </div>
+                </div>
+                <div class="control-sub">
+                  <label for="xerrTypeSelect">Type</label>
+                  <select id="xerrTypeSelect" aria-label="X uncertainty type">
+                    <option value="sigma">Standard Deviation (σ)</option>
+                    <option value="variance">Variance (σ^2)</option>
+                    <option value="invvar">Inverse Variance (1/σ^2)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control" id="yerrContainer">
+                <div class="err-header">
+                  <label>Y Uncertainty</label>
+                  <label class="mini-switch" title="Use separate lower / upper σ columns">
+                    <input type="checkbox" id="yerrAsymToggle" />
+                    <span class="mini-slider"></span>
+                    <span class="mini-label">Asym</span>
+                  </label>
+                </div>
+                <select id="yerrSelect" aria-label="Y Uncertainty"></select>
+                <div class="asym-cols hidden" id="yerrAsymCols">
+                  <div class="asym-col">
+                    <label class="asym-col-label" for="yerrLowerSelect">Lower (−σ)</label>
+                    <select id="yerrLowerSelect" aria-label="Y lower uncertainty"></select>
+                  </div>
+                  <div class="asym-col">
+                    <label class="asym-col-label" for="yerrUpperSelect">Upper (+σ)</label>
+                    <select id="yerrUpperSelect" aria-label="Y upper uncertainty"></select>
+                  </div>
+                </div>
+                <div class="control-sub">
+                  <label for="yerrTypeSelect">Type</label>
+                  <select id="yerrTypeSelect" aria-label="Y Uncertainty Type">
+                    <option value="sigma">Standard Deviation (σ)</option>
+                    <option value="variance">Variance (σ^2)</option>
+                    <option value="invvar">Inverse Variance (1/σ^2)</option>
+                  </select>
+                </div>
+                <!-- Style sub-control: visible in step mode only (hidden in scatter via CSS) -->
+                <div class="control-sub step-only" id="yerrStyleContainer">
+                  <label for="yerrStyleSelect">Style</label>
+                  <select id="yerrStyleSelect" aria-label="Y Uncertainty Style">
+                    <option value="shade">Shaded band</option>
+                    <option value="bars">Error bars</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Row 3: X scale | Y scale -->
+              <div class="control" id="xScaleControl">
+                <label for="xScaleSelect">X Scale</label>
+                <select id="xScaleSelect" aria-label="X Scale">
+                  <option value="linear" selected>Linear</option>
+                  <option value="log10">Log10</option>
+                  <option value="sinh">Sinh</option>
+                  <option value="asinh">Asinh</option>
+                </select>
+              </div>
+              <div class="control" id="yScaleControl">
+                <label for="yScaleSelect">Y Scale</label>
+                <select id="yScaleSelect" aria-label="Y Scale">
+                  <option value="linear" selected>Linear</option>
+                  <option value="log10">Log10</option>
+                  <option value="sinh">Sinh</option>
+                  <option value="asinh">Asinh</option>
+                </select>
+              </div>
+
+              <!-- Row 4: X label | Y label -->
+              <div class="control" id="xLabelControl">
+                <label for="customXLabel">X label</label>
+                <input type="text" id="customXLabel" placeholder="Auto" autocomplete="off" />
+              </div>
+              <div class="control" id="yLabelControl">
+                <label for="customYLabel">Y label</label>
+                <input type="text" id="customYLabel" placeholder="Auto" autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- Custom plot title (full width) -->
+            <div class="control-row">
+              <div class="control">
+                <label for="customTitle">Plot Title</label>
+                <input type="text" id="customTitle" placeholder="Filename" autocomplete="off" />
+              </div>
+            </div>
+          </section>
+        </div>
+      </details>
+
+      <section class="status" id="status" role="status"></section>
+
+      <section class="plot-wrap">
+        <div class="plot-toolbar" aria-label="Plot tools">
+          <div class="toolbar-row">
+            <button type="button" class="plot-button" id="autoscaleXYBtn">Auto XY</button>
+            <button type="button" class="plot-button" id="autoscaleXYErrBtn">Auto XY ±err</button>
+            <button type="button" class="plot-button" id="floorXYBtn">Limit XY Positive</button>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="zoomInBtn">Zoom +</button>
+            <button type="button" class="plot-button" id="zoomOutBtn">Zoom −</button>
+          </div>
+          <div class="toolbar-row">
+            <button type="button" class="plot-button" id="autoscaleXBtn">Auto X</button>
+            <button type="button" class="plot-button" id="autoscaleXErrBtn">Auto X ±err</button>
+            <button type="button" class="plot-button" id="floorXBtn">Limit X Positive</button>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="autoscaleYBtn">Auto Y</button>
+            <button type="button" class="plot-button" id="autoscaleYErrBtn">Auto Y ±err</button>
+            <button type="button" class="plot-button" id="floorYBtn">Limit Y Positive</button>
+          </div>
+          <div class="toolbar-row">
+            <button type="button" class="plot-button" id="zoomModeBtn" aria-pressed="false">Zoom</button>
+            <button type="button" class="plot-button active" id="panModeBtn" aria-pressed="true">Pan</button>
+            <button type="button" class="plot-button" id="crosshairToggle" aria-pressed="false">Crosshair</button>
+            <button type="button" class="plot-button" id="clearCrosshairBtn" disabled>Clear</button>
+            <div class="crosshair-readout" id="crosshairReadout">Crosshair off</div>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="examineToggle" aria-pressed="false" disabled>Examine</button>
+            <button type="button" class="plot-button" id="selectAllBtn" disabled>Select All</button>
+            <button type="button" class="plot-button" id="deselectAllBtn" disabled>Deselect All</button>
+            <div class="examine-readout" id="examineReadout">0 selected</div>
+            <div class="toolbar-spacer" aria-hidden="true"></div>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="saveImageBtn">Save as PNG</button>
+          </div>
+        </div>
+        <div class="plot-area">
+          <div id="plot" class="plot"></div>
+          <div id="emptyState" class="empty">
+            <h2>No files open</h2>
+            <p>Open a file with the button above, or drag and drop files anywhere on the page.</p>
+          </div>
+        </div>
+        <!-- Drag this handle to resize the plot vertically -->
+        <div class="plot-resize-handle" id="plotResizeHandle" title="Drag to resize plot"></div>
+      </section>
+
+      <details class="menu-panel examine-panel" id="examinePanel" open>
+        <summary class="menu-header">
+          <span class="menu-title">Examine</span>
+          <span class="chevron"></span>
+        </summary>
+        <div class="examine-content">
+          <div class="examine-table-wrapper" id="examineTableWrapper">
+            <table class="examine-table">
+              <thead id="examineTableHead"></thead>
+              <tbody id="examineTableBody"></tbody>
+            </table>
+          </div>
+          <div class="examine-empty" id="examineEmpty">No points selected. Use Examine mode to select points on the plot.</div>
+        </div>
+      </details>
+
+      <section class="headers" id="headers">
+        <div class="headers-head">
+          <div>
+            <h2>Headers</h2>
+            <p>Inspect header key/value metadata for the active FITS file.</p>
+          </div>
+          <div class="control compact">
+            <label for="headerHduSelect">Header HDU</label>
+            <select id="headerHduSelect" aria-label="Header HDU"></select>
+          </div>
+        </div>
+        <div class="headers-body">
+          <table class="header-table" aria-label="HDU headers table">
+            <thead>
+              <tr>
+                <th>Keyword</th>
+                <th>Value</th>
+                <th>Comment</th>
+              </tr>
+            </thead>
+            <tbody id="headerTableBody"></tbody>
+          </table>
+          <div id="headerEmpty" class="header-empty">No header loaded.</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- <script src="extern/plotly-2.32.0.min.js" defer></script> -->
+    <script src="extern/plotly-3.5.1.min.js" defer></script>
+    <!-- <script src="https://cdn.plot.ly/plotly-3.5.1.min.js" defer></script> -->
+    <script src="extern/fits.js" defer></script>
+    <script src="app.js" defer></script>
+  </body>
+</html>

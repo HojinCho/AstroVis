@@ -1,0 +1,1179 @@
+:root {
+  --bg-1: #f6f1e8;
+  --bg-2: #e5f0f2;
+  --ink: #1a1b1e;
+  --muted: #4e5561;
+  --accent: #0a6f6d;
+  --accent-2: #c8553d;
+  --panel: rgba(255, 255, 255, 0.8);
+  --panel-strong: rgba(255, 255, 255, 0.95);
+  --border: rgba(26, 27, 30, 0.12);
+  --shadow: 0 18px 40px rgba(26, 27, 30, 0.15);
+  --radius: 18px;
+  --select-bg: #ffffff;
+  --select-disabled-bg: #f3f3f3;
+  --transition: 0.2s ease;
+}
+
+body.dark-mode {
+  --bg-1: #07080e;
+  --bg-2: #0c0f1e;
+  --ink: #dde5f2;
+  --muted: #6b7a9a;
+  --accent: #5b8fef;
+  --accent-2: #e07855;
+  --panel: rgba(12, 15, 26, 0.92);
+  --panel-strong: rgba(8, 10, 18, 0.98);
+  --border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 20px 52px rgba(0, 0, 0, 0.72);
+  --select-bg: #0a0d1c;
+  --select-disabled-bg: #070918;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", "Sora", sans-serif;
+  color: var(--ink);
+  transition: background var(--transition), color var(--transition);
+  background: radial-gradient(circle at 15% 10%, #fdf8ee 0%, transparent 42%),
+    radial-gradient(circle at 80% 5%, #dbeaf4 0%, transparent 38%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2));
+}
+
+body.dark-mode {
+  background:
+    radial-gradient(ellipse at 15% 0%,   rgba(38, 58, 160, 0.38) 0%, transparent 55%),
+    radial-gradient(ellipse at 88% 105%, rgba(22, 36, 120, 0.30) 0%, transparent 55%),
+    linear-gradient(158deg, #07080e 0%, #0c0f1e 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0; /* inset: 0 — not supported before Safari 14.1 */
+  background: radial-gradient(circle at 35% 30%, rgba(10, 111, 109, 0.08), transparent 45%),
+    radial-gradient(circle at 70% 70%, rgba(200, 85, 61, 0.1), transparent 45%);
+  pointer-events: none;
+  z-index: -1;
+  transition: opacity var(--transition);
+}
+
+body.dark-mode::before {
+  background:
+    radial-gradient(circle at 28% 32%, rgba(91, 143, 239, 0.07), transparent 52%),
+    radial-gradient(circle at 74% 70%, rgba(110, 55, 175, 0.05), transparent 52%);
+  opacity: 1;
+}
+
+/* ── Drag-and-drop overlay ───────────────────────────────────────────── */
+body.drag-over::after {
+  content: '';
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0; /* inset: 0 — not supported before Safari 14.1 */
+  border: 3px dashed var(--accent);
+  background: rgba(10, 111, 109, 0.05);
+  z-index: 9998;
+  pointer-events: none;
+  border-radius: 0;
+}
+body.dark-mode.drag-over::after {
+  background: rgba(91, 143, 239, 0.06);
+}
+
+.app {
+  max-width: 1200px;
+  margin: 32px auto 48px;
+  padding: 0 24px;
+  display: grid;
+  gap: 20px;
+  animation: rise 0.6s ease-out both;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 32px;
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  transition: background var(--transition), border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.title-block {
+  max-width: 560px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  color: var(--accent);
+  margin: 0 0 10px;
+  transition: color var(--transition);
+}
+
+h1 {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  margin: 0 0 8px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+.file-actions {
+  display: grid;
+  gap: 10px;
+  max-width: 320px;
+}
+
+/* ── Theme toggle ────────────────────────────────────────────────────── */
+
+.theme-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  -webkit-user-select: none; /* Safari < 16.4 */
+  user-select: none;
+  width: fit-content;
+  margin-left: auto;
+}
+
+.theme-switch input {
+  display: none;
+}
+
+.slider {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  background-color: #ccc;
+  border-radius: 20px;
+  transition: background-color var(--transition);
+  flex-shrink: 0;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: white;
+  top: 2px;
+  left: 2px;
+  transition: transform var(--transition);
+}
+
+.theme-switch input:checked + .slider {
+  background-color: var(--accent);
+}
+
+.theme-switch input:checked + .slider::before {
+  transform: translateX(20px);
+}
+
+.theme-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ── File button ─────────────────────────────────────────────────────── */
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg-1);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background var(--transition);
+}
+
+.file-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(26, 27, 30, 0.2);
+}
+
+.file-button input {
+  display: none;
+}
+
+/* ── File chooser dropdown ───────────────────────────────────────────── */
+
+.file-chooser {
+  position: relative;
+}
+
+.file-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 200;
+  animation: menuIn 0.15s ease both;
+}
+
+.file-menu.open {
+  display: block;
+}
+
+.file-menu-item {
+  display: block;
+  padding: 11px 18px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+  transition: background var(--transition);
+}
+
+.file-menu-item + .file-menu-item {
+  border-top: 1px solid var(--border);
+}
+
+.file-menu-item:hover {
+  background: rgba(10, 111, 109, 0.08);
+}
+
+body.dark-mode .file-menu-item:hover {
+  background: rgba(91, 143, 239, 0.1);
+}
+
+.file-menu-item input {
+  display: none;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  transition: border-color 0.2s ease, transform 0.2s ease, background var(--transition);
+  animation: tabIn 0.3s ease both;
+}
+
+.tab:hover {
+  transform: translateY(-1px);
+  border-color: rgba(10, 111, 109, 0.4);
+}
+
+.tab.active {
+  background: rgba(10, 111, 109, 0.12);
+  border-color: rgba(10, 111, 109, 0.45);
+}
+
+body.dark-mode .tab:hover {
+  border-color: rgba(91, 143, 239, 0.28);
+}
+
+body.dark-mode .tab.active {
+  background: rgba(91, 143, 239, 0.12);
+  border-color: rgba(91, 143, 239, 0.38);
+}
+
+.tab-title {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  background: rgba(26, 27, 30, 0.08);
+  color: var(--ink);
+}
+
+body.dark-mode .tab-close {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Menu panel ──────────────────────────────────────────────────────── */
+
+.menu-panel {
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.menu-header {
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 12px 18px;
+  background: var(--panel-strong);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--transition);
+}
+
+.menu-header::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--transition);
+}
+
+.menu-panel[open] .chevron {
+  transform: rotate(-135deg);
+}
+
+.menu-content {
+  padding: 20px;
+}
+
+/* ── Controls layout ─────────────────────────────────────────────────── */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.control-row {
+  display: grid;
+  gap: 16px;
+}
+
+.control-row.row-two {
+  grid-template-columns: 3fr 1fr;
+}
+
+/*
+  Two-column settings grid with a continuous vertical separator.
+  Three named rows ensure X and Y controls always share the same CSS row,
+  regardless of whether xerrContainer (scatter-only) is visible.
+
+  Column layout: [left (1fr)] [separator (1px)] [right (1fr)]
+  Row layout: [row1: selects] [row2: uncertainties] [row3: scales]
+*/
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  grid-template-rows: auto auto auto auto;
+  row-gap: 16px;
+  column-gap: 24px;
+  align-items: start;
+}
+
+/* Vertical separator – a single element spanning all 3 rows */
+.v-sep {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  background: var(--border);
+  align-self: stretch;
+  transition: background var(--transition);
+}
+
+/* Explicit grid placement so items stay in their row even when a sibling is hidden */
+#xControl       { grid-column: 1; grid-row: 1; }
+#yControl       { grid-column: 3; grid-row: 1; }
+#xerrContainer  { grid-column: 1; grid-row: 2; }
+#yerrContainer  { grid-column: 3; grid-row: 2; }
+#xScaleControl  { grid-column: 1; grid-row: 3; }
+#yScaleControl  { grid-column: 3; grid-row: 3; }
+#xLabelControl  { grid-column: 1; grid-row: 4; }
+#yLabelControl  { grid-column: 3; grid-row: 4; }
+
+/* ── scatter-only / step-only visibility ─────────────────────────────── */
+
+/* Hidden by default; shown when .controls has .is-scatter */
+.scatter-only {
+  display: none;
+}
+
+.controls.is-scatter .scatter-only {
+  display: grid; /* matches .control { display: grid } */
+}
+
+/* Step-only: shown by default; hidden when scatter */
+.step-only {
+  display: grid;
+}
+
+.controls.is-scatter .step-only {
+  display: none;
+}
+
+/* ── Individual control ──────────────────────────────────────────────── */
+
+.control {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.control label {
+  font-weight: 600;
+  color: var(--muted);
+  transition: color var(--transition);
+}
+
+.control select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  font-family: inherit;
+  font-size: 0.95rem;
+  width: 100%;
+  color: var(--ink);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+  -webkit-appearance: auto; /* Safari — keep native arrow */
+  appearance: auto; /* keep native arrow */
+}
+
+.control select:disabled {
+  opacity: 0.55;
+  background: var(--select-disabled-bg);
+  cursor: not-allowed;
+}
+
+.control input[type="text"] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  font-family: inherit;
+  font-size: 0.95rem;
+  width: 100%;
+  color: var(--ink);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+  outline: none;
+}
+
+.control input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+.control input[type="text"]::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.control input[type="text"]:disabled {
+  opacity: 0.55;
+  background: var(--select-disabled-bg);
+  cursor: not-allowed;
+}
+
+.control-sub {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+.control-sub label {
+  font-size: 0.8rem;
+}
+
+/* ── Utility ─────────────────────────────────────────────────────────── */
+
+.hidden {
+  display: none !important;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────── */
+
+.status {
+  min-height: 28px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: background var(--transition), border-color var(--transition),
+    color var(--transition);
+}
+
+.status.ok {
+  border-color: rgba(10, 111, 109, 0.4);
+  background: rgba(10, 111, 109, 0.08);
+  color: var(--accent);
+}
+
+.status.warn {
+  border-color: rgba(200, 85, 61, 0.4);
+  background: rgba(200, 85, 61, 0.08);
+  color: var(--accent-2);
+}
+
+.status.error {
+  border-color: rgba(171, 48, 38, 0.5);
+  background: rgba(171, 48, 38, 0.1);
+  color: #c0392b;
+}
+
+body.dark-mode .status.ok {
+  border-color: rgba(62, 200, 194, 0.32);
+  background:   rgba(62, 200, 194, 0.07);
+  color: #3ec8c2;
+}
+
+body.dark-mode .status.warn {
+  border-color: rgba(224, 120, 85, 0.38);
+  background:   rgba(224, 120, 85, 0.08);
+  color: var(--accent-2);
+}
+
+body.dark-mode .status.error {
+  border-color: rgba(210, 80, 80, 0.45);
+  background:   rgba(210, 80, 80, 0.09);
+  color: #e57373;
+}
+
+.status.info {
+  border-color: var(--border);
+  background: var(--panel);
+  color: var(--muted);
+}
+
+/* ── Plot section ────────────────────────────────────────────────────── */
+
+.plot-wrap {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+.plot-area {
+  position: relative;
+}
+
+.plot-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px 12px 0 0;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: 0 -4px 12px rgba(26, 27, 30, 0.06);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+
+.toolbar-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.plot-button {
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background var(--transition),
+    color var(--transition), border-color var(--transition);
+}
+
+.plot-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(26, 27, 30, 0.12);
+}
+
+.plot-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.plot-button.active {
+  background: rgba(10, 111, 109, 0.16);
+  border-color: rgba(10, 111, 109, 0.4);
+  color: var(--accent);
+}
+
+body.dark-mode .plot-button.active {
+  background: rgba(91, 143, 239, 0.14);
+  border-color: rgba(91, 143, 239, 0.42);
+  color: var(--accent);
+}
+
+.crosshair-readout {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(26, 27, 30, 0.06);
+  transition: background var(--transition), color var(--transition);
+}
+
+body.dark-mode .crosshair-readout {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.examine-readout {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(26, 27, 30, 0.06);
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition);
+}
+
+body.dark-mode .examine-readout {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.plot {
+  min-height: 420px;
+  border-radius: 0 0 0 0;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-bottom: none;
+  background: var(--select-bg);
+  overflow: hidden;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+/* ── Resize handle ───────────────────────────────────────────────────── */
+
+.plot-resize-handle {
+  height: 12px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  transition: background var(--transition);
+}
+
+.plot-resize-handle::after {
+  content: '';
+  width: 36px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background var(--transition);
+}
+
+.plot-resize-handle:hover::after {
+  background: var(--accent);
+}
+
+/* ── Examine panel ───────────────────────────────────────────────────── */
+
+.examine-panel {
+  /* inherits .menu-panel card styles; add nothing extra here */
+}
+
+.examine-content {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.examine-table-wrapper {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  max-height: 260px;
+  overflow: auto;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.examine-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.examine-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 9px 12px;
+  background: rgba(26, 27, 30, 0.05);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+
+body.dark-mode .examine-table thead th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.examine-table tbody td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.examine-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.examine-table tbody tr:nth-child(even) {
+  background: rgba(26, 27, 30, 0.02);
+}
+
+body.dark-mode .examine-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.examine-table tbody tr:hover {
+  background: rgba(10, 111, 109, 0.06);
+}
+
+body.dark-mode .examine-table tbody tr:hover {
+  background: rgba(91, 143, 239, 0.08);
+}
+
+.examine-empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.examine-empty.hidden {
+  display: none;
+}
+
+/* ── Headers section ─────────────────────────────────────────────────── */
+
+.headers {
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.headers-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headers-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.3rem;
+}
+
+.headers-head p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 520px;
+}
+
+.control.compact {
+  min-width: 220px;
+}
+
+.headers-body {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  max-height: 280px;
+  overflow: auto;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.header-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.header-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  background: rgba(26, 27, 30, 0.05);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  transition: background var(--transition);
+}
+
+body.dark-mode .header-table thead th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.header-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.header-table tbody tr:nth-child(even) {
+  background: rgba(26, 27, 30, 0.02);
+}
+
+body.dark-mode .header-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.header-empty {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0; /* inset: 0 — not supported before Safari 14.1 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--select-bg);
+  font-size: 0.95rem;
+  transition: background var(--transition);
+}
+
+.header-empty.hidden {
+  display: none;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+
+.empty {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0; /* inset: 0 — not supported before Safari 14.1 */
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 24px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(4px); /* Safari < 18 */
+  backdrop-filter: blur(4px);
+  transition: background var(--transition);
+}
+
+body.dark-mode .empty {
+  background: rgba(7, 8, 14, 0.78);
+}
+
+.empty.hidden {
+  display: none;
+}
+
+.empty h2 {
+  margin: 0 0 8px;
+  font-size: 1.4rem;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────── */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tabIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .app-header {
+    padding: 22px;
+  }
+
+  .file-actions {
+    max-width: 100%;
+  }
+
+  .control-row.row-two {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .app {
+    margin-top: 20px;
+  }
+
+  .tab-title {
+    max-width: 120px;
+  }
+
+  .control-row.row-two {
+    grid-template-columns: 1fr;
+  }
+
+  /* On small screens collapse the two-column grid to a single column */
+  .settings-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: unset;
+  }
+
+  .v-sep { display: none; }
+
+  #xControl, #yControl,
+  #xerrContainer, #yerrContainer,
+  #xScaleControl, #yScaleControl,
+  #xLabelControl, #yLabelControl {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+/* ── Error header (label + asymmetric toggle) ────────────────────────── */
+
+.err-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Mini toggle switch ──────────────────────────────────────────────── */
+
+.mini-switch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  -webkit-user-select: none; /* Safari < 16.4 */
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.mini-switch input {
+  display: none;
+}
+
+.mini-slider {
+  position: relative;
+  width: 28px;
+  height: 15px;
+  background: rgba(26, 27, 30, 0.25);
+  border-radius: 15px;
+  transition: background-color var(--transition);
+  flex-shrink: 0;
+}
+
+body.dark-mode .mini-slider {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.mini-slider::before {
+  content: "";
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: white;
+  top: 2px;
+  left: 2px;
+  transition: transform var(--transition);
+}
+
+.mini-switch input:checked + .mini-slider {
+  background: var(--accent);
+}
+
+.mini-switch input:checked + .mini-slider::before {
+  transform: translateX(13px);
+}
+
+.mini-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color var(--transition);
+}
+
+/* ── Asymmetric uncertainty column pair ──────────────────────────────── */
+
+.asym-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.asym-col {
+  display: grid;
+  gap: 5px;
+}
+
+.asym-col-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color var(--transition);
+}
+
+/* ── Histogram options row ───────────────────────────────────────────── */
+
+#histOptionsRow {
+  flex-wrap: wrap;
+}
+
+#histOptionsRow > .control {
+  flex: 1;
+  min-width: 130px;
+}
+
+#histOptionsRow .control input[type="number"] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--select-bg);
+  font-family: inherit;
+  font-size: 0.95rem;
+  width: 100%;
+  color: var(--ink);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+  outline: none;
+}
+
+#histOptionsRow .control input[type="number"]:focus {
+  border-color: var(--accent);
+}
+
+#histOptionsRow .control input[type="number"]:disabled {
+  opacity: 0.55;
+  background: var(--select-disabled-bg);
+  cursor: not-allowed;
+}
+
+/* ── Hist plot-type visibility ───────────────────────────────────────── */
+
+/* Hidden by default; shown in hist modes */
+.hist-only { display: none; }
+.controls.is-hist1d .hist-only,
+.controls.is-hist2d .hist-only { display: flex; }
+
+/* hist2d-only: hidden unless hist2d */
+.hist2d-only { display: none; }
+.controls.is-hist2d .hist2d-only { display: grid; }
+
+/* Hide Y axis controls in hist1d */
+.controls.is-hist1d #yControl,
+.controls.is-hist1d #yScaleControl,
+.controls.is-hist1d #yLabelControl { display: none; }
+
+/* Hide Y error controls in all hist modes */
+.controls.is-hist1d #yerrContainer,
+.controls.is-hist2d #yerrContainer { display: none; }
+
+/* Hide step-only controls in hist modes */
+.controls.is-hist1d .step-only,
+.controls.is-hist2d .step-only { display: none; }
+
+/* Explicitly keep scatter-only elements hidden in hist modes */
+.controls.is-hist1d .scatter-only,
+.controls.is-hist2d .scatter-only { display: none; }
+
+/* Hist 1D: X controls span the full two-column grid width */
+.controls.is-hist1d .v-sep { display: none; }
+.controls.is-hist1d #xControl,
+.controls.is-hist1d #xScaleControl,
+.controls.is-hist1d #xLabelControl { grid-column: 1 / -1; }
