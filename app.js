@@ -85,6 +85,7 @@
       deselectAllBtn:    document.getElementById('deselectAllBtn'),
       examineReadout:    document.getElementById('examineReadout'),
       examinePanel:      document.getElementById('examinePanel'),
+      examineExportBtn:  document.getElementById('examineExportBtn'),
       examineTableHead:  document.getElementById('examineTableHead'),
       examineTableBody:  document.getElementById('examineTableBody'),
       examineEmpty:      document.getElementById('examineEmpty'),
@@ -182,6 +183,7 @@
     elements.examineToggle.addEventListener('click', onExamineToggle);
     elements.selectAllBtn.addEventListener('click', onSelectAll);
     elements.deselectAllBtn.addEventListener('click', onDeselectAll);
+    elements.examineExportBtn.addEventListener('click', onExamineExportCSV);
     elements.headerHduSelect.addEventListener('change', onHeaderHduChange);
 
     // Track shift key globally for examine additive/subtractive selection
@@ -1109,6 +1111,64 @@
     updateExamineVisuals(tab);
     updateExamineTable(tab);
     syncPlotControls(tab);
+  }
+
+  function onExamineExportCSV() {
+    const tab = getActiveTab();
+    if (!tab || !tab.selectedIndices || tab.selectedIndices.size === 0) return;
+    const hdu = getSelectedHdu(tab);
+    if (!hdu || !hdu.columns || !hdu.columns.length) return;
+
+    const allCols   = hdu.columns;
+    const hduIdx    = tab.selectedHduIndex;
+    const prefix    = `${hduIdx}:`;
+    const selectedArr = Array.from(tab.selectedIndices).sort((a, b) => a - b);
+
+    // Check if any columns still loading — warn but proceed with whatever is cached
+    const hasUncached = allCols.some((c) => !tab.columnCache[prefix + c]);
+    if (hasUncached) {
+      setTabStatus(tab, 'warn', 'Some columns are still loading — export may contain blank values.');
+    }
+
+    // RFC 4180 CSV: quote fields that contain comma, double-quote, or newline
+    function csvField(val) {
+      const s = (val === null || val === undefined) ? '' : String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    const rows = [];
+
+    // Header row: Row, col1, col2, …
+    rows.push(['Row', ...allCols].map(csvField).join(','));
+
+    // Data rows
+    selectedArr.forEach((origIdx) => {
+      const fields = [origIdx];
+      allCols.forEach((c) => {
+        const data = tab.columnCache[prefix + c];
+        fields.push(data ? formatTableValue(data[origIdx]) : '');
+      });
+      rows.push(fields.map(csvField).join(','));
+    });
+
+    const csvText = rows.join('\r\n');
+    const blob    = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url     = URL.createObjectURL(blob);
+    const a       = document.createElement('a');
+    const stem    = (tab.name || 'examine').replace(/\.[^.]+$/, '');
+    a.href     = url;
+    a.download = `${stem}_selected.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+
+    if (!hasUncached) {
+      setTabStatus(tab, 'ok', `Exported ${selectedArr.length} row${selectedArr.length === 1 ? '' : 's'} to CSV.`);
+    }
   }
 
   function onPlotSelected(event) {
@@ -2105,6 +2165,7 @@
     elements.examineToggle.setAttribute('aria-pressed', 'false');
     elements.selectAllBtn.disabled    = true;
     elements.deselectAllBtn.disabled  = true;
+    elements.examineExportBtn.disabled = true;
     elements.examineReadout.textContent = '0 selected';
   }
 
@@ -2153,6 +2214,7 @@
     elements.examineToggle.disabled   = !examineAvailable;
     elements.selectAllBtn.disabled    = !examineAvailable;
     elements.deselectAllBtn.disabled  = !(examineAvailable && nSelected > 0);
+    elements.examineExportBtn.disabled = !(examineAvailable && nSelected > 0);
     elements.examineReadout.textContent = `${nSelected} selected`;
     const examineActive = state.examineMode && examineAvailable;
     elements.examineToggle.classList.toggle('active', examineActive);
