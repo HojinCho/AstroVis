@@ -45,6 +45,8 @@
       plotTypeSelect:    document.getElementById('plotTypeSelect'),
       xScaleSelect:      document.getElementById('xScaleSelect'),
       yScaleSelect:      document.getElementById('yScaleSelect'),
+      xInvertToggle:     document.getElementById('xInvertToggle'),
+      yInvertToggle:     document.getElementById('yInvertToggle'),
       xerrSelect:        document.getElementById('xerrSelect'),
       xerrTypeSelect:    document.getElementById('xerrTypeSelect'),
       autoscaleXYBtn:    document.getElementById('autoscaleXYBtn'),
@@ -56,6 +58,8 @@
       autoscaleYBtn:     document.getElementById('autoscaleYBtn'),
       autoscaleYErrBtn:  document.getElementById('autoscaleYErrBtn'),
       floorYBtn:         document.getElementById('floorYBtn'),
+      undoViewBtn:       document.getElementById('undoViewBtn'),
+      redoViewBtn:       document.getElementById('redoViewBtn'),
       zoomModeBtn:       document.getElementById('zoomModeBtn'),
       panModeBtn:        document.getElementById('panModeBtn'),
       zoomInBtn:         document.getElementById('zoomInBtn'),
@@ -79,6 +83,7 @@
       histNBinsYInput:        document.getElementById('histNBinsYInput'),
       histDensityScaleSelect: document.getElementById('histDensityScaleSelect'),
       histMarginalToggle:     document.getElementById('histMarginalToggle'),
+      histKdeToggle:          document.getElementById('histKdeToggle'),
       histOptionsRow:         document.getElementById('histOptionsRow'),
       examineToggle:     document.getElementById('examineToggle'),
       selectAllBtn:      document.getElementById('selectAllBtn'),
@@ -151,6 +156,8 @@
     elements.xerrTypeSelect.addEventListener('change', onErrorOptionsChange);
     elements.xScaleSelect.addEventListener('change', onScaleChange);
     elements.yScaleSelect.addEventListener('change', onScaleChange);
+    elements.xInvertToggle.addEventListener('change', onAxisInvertChange);
+    elements.yInvertToggle.addEventListener('change', onAxisInvertChange);
     elements.autoscaleXYBtn.addEventListener('click', onAutoscaleXY);
     elements.autoscaleXYErrBtn.addEventListener('click', onAutoscaleXYErr);
     elements.floorXYBtn.addEventListener('click', onFloorXY);
@@ -160,6 +167,8 @@
     elements.autoscaleYBtn.addEventListener('click', onAutoscaleY);
     elements.autoscaleYErrBtn.addEventListener('click', onAutoscaleYErr);
     elements.floorYBtn.addEventListener('click', onFloorY);
+    elements.undoViewBtn.addEventListener('click', onUndoView);
+    elements.redoViewBtn.addEventListener('click', onRedoView);
     elements.zoomModeBtn.addEventListener('click', onZoomMode);
     elements.panModeBtn.addEventListener('click', onPanMode);
     elements.zoomInBtn.addEventListener('click', onZoomIn);
@@ -180,6 +189,7 @@
     elements.histNBinsYInput.addEventListener('change', onHistOptionsChange);
     elements.histDensityScaleSelect.addEventListener('change', onHistOptionsChange);
     elements.histMarginalToggle.addEventListener('change', onHistOptionsChange);
+    elements.histKdeToggle.addEventListener('change', onHistOptionsChange);
     elements.examineToggle.addEventListener('click', onExamineToggle);
     elements.selectAllBtn.addEventListener('click', onSelectAll);
     elements.deselectAllBtn.addEventListener('click', onDeselectAll);
@@ -380,6 +390,8 @@
       yerrStyle:   'shade',
       xScale:      'linear',
       yScale:      'linear',
+      invertX:     false,
+      invertY:     false,
       xerrType:    'sigma',
       yerrAsym:    false,
       xerrAsym:    false,
@@ -388,6 +400,7 @@
       histNBinsY:        50,
       histDensityScale:  'linear',
       histShowMarginal:  false,
+      histKde:           false,
       customXLabel: '',
       customYLabel: '',
       customTitle:  '',
@@ -399,6 +412,10 @@
       crosshair:   { enabled: false, x: null, y: null },
       selectedIndices: new Set(),
       examineLoading:  false,
+      viewHistory:  [],   // array of {xScale, yScale, invertX, invertY, xRange, yRange}
+      viewHistIdx:  -1,   // current position in viewHistory
+      _histBusy:    false, // true while undo/redo is applying a state (suppresses capture)
+      _pendingHistRange: null, // {xRange, yRange} to apply after a scale/invert replot
       plotToken:   0,
       status:      { type: 'info', message: fileType === 'csv' ? 'Waiting to parse CSV file.' : 'Waiting to parse FITS file.' }
     };
@@ -690,6 +707,8 @@
     elements.yerrStyleSelect.value  = tab.yerrStyle || 'shade';
     elements.xScaleSelect.value     = tab.xScale    || 'linear';
     elements.yScaleSelect.value     = tab.yScale    || 'linear';
+    elements.xInvertToggle.checked  = Boolean(tab.invertX);
+    elements.yInvertToggle.checked  = Boolean(tab.invertY);
     elements.xerrTypeSelect.value   = tab.xerrType  || 'sigma';
     elements.customXLabel.value     = tab.customXLabel || '';
     elements.customYLabel.value     = tab.customYLabel || '';
@@ -700,6 +719,7 @@
     elements.histNBinsYInput.value        = tab.histNBinsY || 50;
     elements.histDensityScaleSelect.value = tab.histDensityScale || 'linear';
     elements.histMarginalToggle.checked   = Boolean(tab.histShowMarginal);
+    elements.histKdeToggle.checked        = Boolean(tab.histKde);
 
     // Sync tab state from UI (in case populate changed values)
     tab.plotType          = elements.plotTypeSelect.value  || 'scatter';
@@ -722,6 +742,7 @@
     tab.histNBinsY       = parseInt(elements.histNBinsYInput.value, 10) || 50;
     tab.histDensityScale = elements.histDensityScaleSelect.value || 'linear';
     tab.histShowMarginal = elements.histMarginalToggle.checked;
+    tab.histKde          = elements.histKdeToggle.checked;
 
     updateStatus(tab);
     const controlsDisabled = !tab.tableHdus || !tab.tableHdus.length;
@@ -734,6 +755,7 @@
     }
     syncHeaderPane(tab);
     syncPlotControls(tab);
+    updateUndoRedoButtons(tab);
     updateExamineTable(tab);
     // If examine mode is on when switching to this tab, resume column loading
     if (state.examineMode && tab && !tab.examineLoading) examineLoadAllColumns(tab);
@@ -748,6 +770,8 @@
     elements.xerrSelect.disabled     = disabled;
     elements.xScaleSelect.disabled   = disabled;
     elements.yScaleSelect.disabled   = disabled;
+    elements.xInvertToggle.disabled  = disabled;
+    elements.yInvertToggle.disabled  = disabled;
     elements.customXLabel.disabled   = disabled;
     elements.customYLabel.disabled   = disabled;
     elements.customTitle.disabled    = disabled;
@@ -765,6 +789,7 @@
       elements.histNBinsYInput.disabled        = true;
       elements.histDensityScaleSelect.disabled = true;
       elements.histMarginalToggle.disabled     = true;
+      elements.histKdeToggle.disabled          = true;
       elements.controls.classList.remove('is-scatter', 'is-hist1d', 'is-hist2d');
     }
   }
@@ -861,10 +886,14 @@
       elements.xerrTypeSelect.disabled  = true;
       elements.xerrTypeSelect.value     = 'sigma';
       // Hist-specific input controls
-      elements.histNBinsInput.disabled         = false;
+      const kdeOn = Boolean(tab.histKde);
+      elements.histNBinsInput.disabled         = false; // bins controls bandwidth in KDE mode too
       elements.histNBinsYInput.disabled        = !isHist2d;
-      elements.histDensityScaleSelect.disabled = !isHist2d;
+      // Density scale is incompatible with KDE mode (contour handles it natively)
+      elements.histDensityScaleSelect.disabled = !isHist2d || kdeOn;
+      // Marginals work in both regular and KDE mode
       elements.histMarginalToggle.disabled     = !isHist2d;
+      elements.histKdeToggle.disabled          = false;
       return;
     }
 
@@ -885,6 +914,7 @@
     elements.histNBinsYInput.disabled        = true;
     elements.histDensityScaleSelect.disabled = true;
     elements.histMarginalToggle.disabled     = true;
+    elements.histKdeToggle.disabled          = true;
   }
 
   // FIX #3: in scatter mode the Style sub-control disappears (handled via CSS
@@ -1060,6 +1090,22 @@
     tab.histNBinsY       = parseInt(elements.histNBinsYInput.value, 10) || 50;
     tab.histDensityScale = elements.histDensityScaleSelect.value || 'linear';
     tab.histShowMarginal = elements.histMarginalToggle.checked;
+    tab.histKde          = elements.histKdeToggle.checked;
+    updateScatterControls(tab);
+
+    // Capture current axis ranges so the view is not disturbed by the replot.
+    // This matters most for KDE toggles where data extent can differ between
+    // heatmap and contour modes; it also keeps the zoom stable on bin changes.
+    const fl = elements.plot && elements.plot._fullLayout;
+    if (fl && fl.xaxis && Array.isArray(fl.xaxis.range)) {
+      const isH2d = tab.plotType === 'hist2d';
+      tab._preserveView = {
+        xRange: fl.xaxis.range.slice(),
+        yRange: isH2d && fl.yaxis && Array.isArray(fl.yaxis.range)
+          ? fl.yaxis.range.slice() : null
+      };
+    }
+
     plotFromSelections(tab, { useCache: false });
   }
 
@@ -1069,6 +1115,18 @@
     tab.xScale = elements.xScaleSelect.value || 'linear';
     tab.yScale = elements.yScaleSelect.value || 'linear';
     if (tab.crosshair) { tab.crosshair.x = null; tab.crosshair.y = null; }
+    // Push the new state now (scale already updated on tab); range is null because
+    // the plot hasn't re-rendered yet — redo of this entry will use autorange.
+    pushViewState(tab, { xRange: null, yRange: null });
+    plotFromSelections(tab, { useCache: false });
+  }
+
+  function onAxisInvertChange() {
+    const tab = getActiveTab();
+    if (!tab) return;
+    tab.invertX = elements.xInvertToggle.checked;
+    tab.invertY = elements.yInvertToggle.checked;
+    pushViewState(tab, { xRange: null, yRange: null });
     plotFromSelections(tab, { useCache: false });
   }
 
@@ -1459,6 +1517,7 @@
     if (!tab.tableHdus.length) {
       tab.lastSeries = null;
       clearPlot();
+      if (tab._histBusy) { tab._histBusy = false; tab._pendingHistRange = null; }
       return;
     }
     const isHist1d = tab.plotType === 'hist1d';
@@ -1478,6 +1537,7 @@
       setTabStatus(tab, 'warn', msg);
       tab.lastSeries = null;
       clearPlot();
+      if (tab._histBusy) { tab._histBusy = false; tab._pendingHistRange = null; }
       return;
     }
 
@@ -1503,9 +1563,12 @@
       isHist2d ? (tab.histNBinsY || 50) : '',
       isHist2d ? (tab.histDensityScale || 'linear') : '',
       isHist2d ? (tab.histShowMarginal ? 'marg' : '') : '',
+      isHist ? (tab.histKde ? 'kde' : '') : '',
       tab.customXLabel || '',
       isHist1d ? '' : (tab.customYLabel || ''),
       tab.customTitle  || '',
+      tab.invertX ? 'ix' : '',
+      isHist1d ? '' : (tab.invertY ? 'iy' : ''),
       state.darkMode ? 'dark' : 'light'
     ].join('|');
 
@@ -1522,6 +1585,7 @@
       if (!hdu || !hdu.dataUnit || typeof hdu.dataUnit.getColumn !== 'function') {
         setTabStatus(tab, 'error', 'Selected HDU is not a table.');
         clearPlot();
+        if (tab._histBusy) { tab._histBusy = false; tab._pendingHistRange = null; }
         return;
       }
 
@@ -1565,16 +1629,37 @@
           _histMode: true,
           _hist1d:   isHist1d
         };
+        // Restore the axis ranges that were captured before the replot so
+        // that toggling KDE / adjusting bins never resets the user's zoom.
+        const pv = tab._preserveView;
+        tab._preserveView = null;
+        if (pv) {
+          if (pv.xRange && plotSpec.layout.xaxis) {
+            plotSpec.layout.xaxis.range    = pv.xRange;
+            plotSpec.layout.xaxis.autorange = false;
+          }
+          if (pv.yRange && plotSpec.layout.yaxis) {
+            plotSpec.layout.yaxis.range    = pv.yRange;
+            plotSpec.layout.yaxis.autorange = false;
+          }
+        }
+
         tab.lastPlotKey = plotKey;
         tab.lastPlot    = plotSpec;
 
         renderPlot(tab, plotSpec);
         syncPlotControls(tab);
-        const binStr = isHist2d
-          ? `${tab.histNBins || 50}×${tab.histNBinsY || 50}`
-          : String(tab.histNBins || 50);
-        setTabStatus(tab, 'ok',
-          `Histogram: ${xFiltered.length} points, ${binStr} bins.`);
+        const kdeOn = Boolean(tab.histKde);
+        if (kdeOn) {
+          setTabStatus(tab, 'ok',
+            `KDE: ${xFiltered.length} points.`);
+        } else {
+          const binStr = isHist2d
+            ? `${tab.histNBins || 50}×${tab.histNBinsY || 50}`
+            : String(tab.histNBins || 50);
+          setTabStatus(tab, 'ok',
+            `Histogram: ${xFiltered.length} points, ${binStr} bins.`);
+        }
         return;
       }
 
@@ -1611,8 +1696,16 @@
       const xRaw = makeNumericArray(toArray(xColumn));
       const yRaw = makeNumericArray(toArray(yColumn));
 
-      const xScaled = prepareAxisValues(xRaw, tab.xScale);
-      const yScaled = prepareAxisValues(yRaw, tab.yScale);
+      // For exp scale the transform is exp(value − median); compute the offset once from
+      // the raw array so that axis data and error bounds use an identical reference point.
+      const xExpOffset = tab.xScale === 'exp' ? computeExpOffset(xRaw) : 0;
+      const yExpOffset = tab.yScale === 'exp' ? computeExpOffset(yRaw) : 0;
+      // Store so the pan/zoom tick-refresh handler can reuse the same offset.
+      tab._lastXExpOffset = xExpOffset;
+      tab._lastYExpOffset = yExpOffset;
+
+      const xScaled = prepareAxisValues(xRaw, tab.xScale, xExpOffset);
+      const yScaled = prepareAxisValues(yRaw, tab.yScale, yExpOffset);
 
       // Y bounds — asymmetric allows one column to be absent (treat missing side as σ=0)
       let yBounds = { lower: null, upper: null };
@@ -1624,10 +1717,10 @@
         const yerrHigh = yerrUpperColumn
           ? normalizeErrorValues(makeNumericArray(toArray(yerrUpperColumn)), tab.yerrType)
           : new Array(nY).fill(0);
-        yBounds = prepareAsymBounds(yRaw, yerrLow, yerrHigh, tab.yScale);
+        yBounds = prepareAsymBounds(yRaw, yerrLow, yerrHigh, tab.yScale, yExpOffset);
       } else if (!tab.yerrAsym && yerrColumn) {
         const yerrValues = normalizeErrorValues(makeNumericArray(toArray(yerrColumn)), tab.yerrType);
-        yBounds = prepareBounds(yRaw, yerrValues, tab.yScale);
+        yBounds = prepareBounds(yRaw, yerrValues, tab.yScale, yExpOffset);
       }
 
       // X bounds — same one-sided tolerance as Y
@@ -1640,10 +1733,10 @@
         const xerrHigh = xerrUpperColumn
           ? normalizeErrorValues(makeNumericArray(toArray(xerrUpperColumn)), tab.xerrType)
           : new Array(nX).fill(0);
-        xBounds = prepareAsymBounds(xRaw, xerrLow, xerrHigh, tab.xScale);
+        xBounds = prepareAsymBounds(xRaw, xerrLow, xerrHigh, tab.xScale, xExpOffset);
       } else if (!tab.xerrAsym && xerrColumn) {
         const xerrValues = normalizeErrorValues(makeNumericArray(toArray(xerrColumn)), tab.xerrType);
-        xBounds = prepareBounds(xRaw, xerrValues, tab.xScale);
+        xBounds = prepareBounds(xRaw, xerrValues, tab.xScale, xExpOffset);
       }
 
       const series = buildSeries(
@@ -1700,7 +1793,8 @@
     const theme = getThemeColors();
 
     // FIX #5: include plotType in uirevision so Plotly doesn't bleed styles across type switches
-    const uirevision = `${tab.id}-${plotType}`;
+    // Also include invert flags so toggling invert resets the view to the full inverted range
+    const uirevision = `${tab.id}-${plotType}-${tab.invertX ? 'ix' : ''}-${tab.invertY ? 'iy' : ''}`;
 
     const traces = [];
 
@@ -1788,6 +1882,10 @@
       });
     }
 
+    // Initial tick info for custom scales — recomputed after every pan/zoom in onPlotRelayout.
+    const xRange0 = arrayRange(series.x);
+    const yRange0 = arrayRange(series.y);
+
     const layout = {
       uirevision,
       title:  { text: (tab.customTitle || '').trim() || tab.name, font: { size: 20, color: theme.fontColor } },
@@ -1796,28 +1894,32 @@
       plot_bgcolor:  theme.plotBg,
       font:   { size: 13, color: theme.fontColor, family: '"Space Grotesk", sans-serif' },
       xaxis: {
-        title:     { text: resolveAxisLabel(tab, 'x'), font: { size: 14 } },
-        gridcolor: theme.gridColor,
-        linecolor: theme.gridColor,
-        tickcolor: theme.axisColor,
-        color:     theme.axisColor,
-        tickfont:  { size: 13 },
-        zeroline:  false,
-        type:      tab.xScale === 'log10' ? 'log' : 'linear',
-        uirevision: `${tab.columns.x || 'x'}|${tab.xScale || 'linear'}`,
-        ...buildAxisFormat(tab.xScale)
+        title:      { text: resolveAxisLabel(tab, 'x'), font: { size: 14 } },
+        gridcolor:  theme.gridColor,
+        linecolor:  theme.gridColor,
+        tickcolor:  theme.axisColor,
+        color:      theme.axisColor,
+        tickfont:   { size: 13 },
+        zeroline:   false,
+        type:       tab.xScale === 'log10' ? 'log' : 'linear',
+        autorange:  tab.invertX ? 'reversed' : true,
+        uirevision: `${tab.columns.x || 'x'}|${tab.xScale || 'linear'}|${tab.invertX ? 'i' : ''}`,
+        ...buildAxisFormat(tab.xScale),
+        ...(xRange0 ? niceTicksForCustomScale(tab.xScale, xRange0[0], xRange0[1], tab._lastXExpOffset || 0) : {})
       },
       yaxis: {
-        title:     { text: resolveAxisLabel(tab, 'y'), font: { size: 14 } },
-        gridcolor: theme.gridColor,
-        linecolor: theme.gridColor,
-        tickcolor: theme.axisColor,
-        color:     theme.axisColor,
-        tickfont:  { size: 13 },
-        zeroline:  false,
-        type:      tab.yScale === 'log10' ? 'log' : 'linear',
-        uirevision: `${tab.columns.y || 'y'}|${tab.yScale || 'linear'}`,
-        ...buildAxisFormat(tab.yScale)
+        title:      { text: resolveAxisLabel(tab, 'y'), font: { size: 14 } },
+        gridcolor:  theme.gridColor,
+        linecolor:  theme.gridColor,
+        tickcolor:  theme.axisColor,
+        color:      theme.axisColor,
+        tickfont:   { size: 13 },
+        zeroline:   false,
+        type:       tab.yScale === 'log10' ? 'log' : 'linear',
+        autorange:  tab.invertY ? 'reversed' : true,
+        uirevision: `${tab.columns.y || 'y'}|${tab.yScale || 'linear'}|${tab.invertY ? 'i' : ''}`,
+        ...buildAxisFormat(tab.yScale),
+        ...(yRange0 ? niceTicksForCustomScale(tab.yScale, yRange0[0], yRange0[1], tab._lastYExpOffset || 0) : {})
       },
       showlegend: false,
       dragmode:   tab.crosshair && tab.crosshair.enabled ? false
@@ -2000,6 +2102,133 @@
   // Plot render / clear
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // View-state history (undo / redo pan, zoom, scale, invert)
+  // ---------------------------------------------------------------------------
+
+  const VIEW_HISTORY_MAX = 50;
+
+  // Read the current view state from tab settings + live Plotly layout.
+  function captureViewState(tab) {
+    const fl = elements.plot && elements.plot._fullLayout;
+    return {
+      xScale:  tab.xScale  || 'linear',
+      yScale:  tab.yScale  || 'linear',
+      invertX: Boolean(tab.invertX),
+      invertY: Boolean(tab.invertY),
+      xRange:  fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range.slice() : null,
+      yRange:  fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range.slice() : null
+    };
+  }
+
+  // Push a new state onto the history stack, truncating any redo tail first.
+  // Pass rangeOverride = { xRange: null, yRange: null } when scale/invert just
+  // changed and the axes haven't been rendered yet (state will use autorange).
+  function pushViewState(tab, rangeOverride) {
+    if (!tab) return;
+    const vs = captureViewState(tab);
+    if (rangeOverride) {
+      if (rangeOverride.xRange !== undefined) vs.xRange = rangeOverride.xRange;
+      if (rangeOverride.yRange !== undefined) vs.yRange = rangeOverride.yRange;
+    }
+    tab.viewHistory = tab.viewHistory.slice(0, tab.viewHistIdx + 1);
+    tab.viewHistory.push(vs);
+    if (tab.viewHistory.length > VIEW_HISTORY_MAX) tab.viewHistory.shift();
+    tab.viewHistIdx = tab.viewHistory.length - 1;
+    updateUndoRedoButtons(tab);
+  }
+
+  function updateUndoRedoButtons(tab) {
+    const canUndo = Boolean(tab && tab.viewHistIdx > 0);
+    const canRedo = Boolean(tab && tab.viewHistory && tab.viewHistIdx < tab.viewHistory.length - 1);
+    elements.undoViewBtn.disabled = !canUndo;
+    elements.redoViewBtn.disabled = !canRedo;
+  }
+
+  // Apply a history snapshot: update tab settings, sync UI, re-render if needed,
+  // then restore the stored axis ranges.
+  function applyViewState(tab, vs) {
+    if (!tab || !vs) return;
+
+    const needReplot =
+      tab.xScale  !== vs.xScale  || tab.yScale  !== vs.yScale ||
+      tab.invertX !== vs.invertX || tab.invertY !== vs.invertY;
+
+    // Update tab state
+    tab.xScale   = vs.xScale;
+    tab.yScale   = vs.yScale;
+    tab.invertX  = vs.invertX;
+    tab.invertY  = vs.invertY;
+
+    // Sync UI controls so the selects/toggles match immediately
+    elements.xScaleSelect.value    = vs.xScale;
+    elements.yScaleSelect.value    = vs.yScale;
+    elements.xInvertToggle.checked = vs.invertX;
+    elements.yInvertToggle.checked = vs.invertY;
+
+    tab._histBusy = true;   // suppress plotly_relayout history capture during restore
+
+    if (needReplot) {
+      // Scale or invert changed — need a full re-render.
+      // renderPlot's .then() will detect _pendingHistRange and apply the range.
+      tab._pendingHistRange = { xRange: vs.xRange, yRange: vs.yRange };
+      if (tab.crosshair) { tab.crosshair.x = null; tab.crosshair.y = null; }
+      plotFromSelections(tab, { useCache: false });
+    } else {
+      // Only range changed — just relayout.
+      const update = {};
+      if (vs.xRange) { update['xaxis.autorange'] = false; update['xaxis.range'] = vs.xRange; }
+      if (vs.yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = vs.yRange; }
+      if (Object.keys(update).length) {
+        window.Plotly.relayout(elements.plot, update)
+          .then(() => { tab._histBusy = false; });
+      } else {
+        tab._histBusy = false;
+      }
+    }
+
+    updateUndoRedoButtons(tab);
+  }
+
+  function onUndoView() {
+    const tab = getActiveTab();
+    if (!tab || tab.viewHistIdx <= 0) return;
+    tab.viewHistIdx--;
+    applyViewState(tab, tab.viewHistory[tab.viewHistIdx]);
+  }
+
+  function onRedoView() {
+    const tab = getActiveTab();
+    if (!tab || !tab.viewHistory || tab.viewHistIdx >= tab.viewHistory.length - 1) return;
+    tab.viewHistIdx++;
+    applyViewState(tab, tab.viewHistory[tab.viewHistIdx]);
+  }
+
+  // Fired by Plotly after any relayout (user pan/zoom, or programmatic relayout).
+  // Captures the new range as a history entry — skipped during undo/redo.
+  function onPlotRelayout(eventData) {
+    const tab = getActiveTab();
+    if (!tab || tab._histBusy || tab._tickBusy) return;
+    const keys = Object.keys(eventData || {});
+    // Only push for changes that actually move the axes
+    const isRangeChange = keys.some((k) =>
+      k.startsWith('xaxis.range') || k.startsWith('yaxis.range') ||
+      k === 'xaxis.autorange'     || k === 'yaxis.autorange'
+    );
+    if (!isRangeChange) return;
+    pushViewState(tab);
+    // Refresh tick labels for custom-scale axes after a pan/zoom
+    const fl = elements.plot._fullLayout;
+    if (fl) {
+      updateCustomScaleTicks(tab,
+        fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null,
+        fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+
   function renderPlot(tab, plotSpec) {
     if (!window.Plotly) return;
     // Sync dragmode and crosshair overlay from live tab state into the spec before
@@ -2035,6 +2264,34 @@
           syncPlotControls(tab);
           updateCrosshairReadout(tab);
           updateExamineTable(tab);
+
+          // View-history management after render
+          if (tab._histBusy) {
+            // Undo/redo replot just finished — apply the pending range (if any)
+            const pr = tab._pendingHistRange;
+            tab._pendingHistRange = null;
+            const update = {};
+            if (pr && pr.xRange) { update['xaxis.autorange'] = false; update['xaxis.range'] = pr.xRange; }
+            if (pr && pr.yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = pr.yRange; }
+            if (Object.keys(update).length) {
+              window.Plotly.relayout(elements.plot, update)
+                .then(() => {
+                  tab._histBusy = false;
+                  const fl = elements.plot._fullLayout;
+                  if (fl) {
+                    updateCustomScaleTicks(tab,
+                      fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null,
+                      fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null
+                    );
+                  }
+                });
+            } else {
+              tab._histBusy = false;
+            }
+          } else if (tab.viewHistory.length === 0) {
+            // First successful render for this tab — push the initial state
+            pushViewState(tab);
+          }
         }
       });
   }
@@ -2055,10 +2312,12 @@
       elements.plot.removeAllListeners('plotly_click');
       elements.plot.removeAllListeners('plotly_selected');
       elements.plot.removeAllListeners('plotly_deselect');
+      elements.plot.removeAllListeners('plotly_relayout');
     }
     elements.plot.on('plotly_click',    onPlotClick);
     elements.plot.on('plotly_selected', onPlotSelected);
     elements.plot.on('plotly_deselect', onPlotDeselect);
+    elements.plot.on('plotly_relayout', onPlotRelayout);
 
     if (!state.plotEventsBound) {
       elements.plot.addEventListener('click', onPlotBackgroundClick);
@@ -2150,6 +2409,8 @@
     elements.autoscaleYBtn.disabled     = true;
     elements.autoscaleYErrBtn.disabled  = true;
     elements.floorYBtn.disabled         = true;
+    elements.undoViewBtn.disabled       = true;
+    elements.redoViewBtn.disabled       = true;
     elements.zoomModeBtn.disabled       = true;
     elements.panModeBtn.disabled        = true;
     elements.zoomInBtn.disabled         = true;
@@ -2172,6 +2433,7 @@
   function syncPlotControls(tab) {
     const hasSeries      = Boolean(tab && tab.lastSeries && tab.lastSeries.x && tab.lastSeries.x.length);
     const isHistMode     = Boolean(tab && tab.lastSeries && tab.lastSeries._histMode);
+    const isHist1d       = Boolean(tab && tab.lastSeries && tab.lastSeries._hist1d);
     // hasYData: y values are available for range calculations.
     // True for scatter/step (y always stored) and hist2d (stored since fix).
     // False for hist1d (count axis — rangemode:'tozero' handles it automatically).
@@ -2180,15 +2442,16 @@
     const hasXerr        = Boolean(hasSeries && !isHistMode && tab && tab.lastSeries.xLower);
     const crosshairActive = Boolean(tab && tab.crosshair && tab.crosshair.enabled);
     // X buttons: always work when there is any series (hist always has x data).
-    // Y buttons: need y data — hist1d has none (count axis), so those stay off.
+    // Y buttons: need y data — hist2d and scatter/step have it; hist1d uses
+    //   Plotly's internal count axis so Auto Y/XY just resets to autorange.
     // ±Err buttons: only when actual error columns exist (never for hist).
-    elements.autoscaleXYBtn.disabled    = !(hasSeries && hasYData);
+    elements.autoscaleXYBtn.disabled    = !(hasSeries && (hasYData || isHist1d));
     elements.autoscaleXYErrBtn.disabled = !(hasYerr || hasXerr);
     elements.floorXYBtn.disabled        = !(hasSeries && hasYData);
     elements.autoscaleXBtn.disabled     = !hasSeries;
     elements.autoscaleXErrBtn.disabled  = !hasXerr;
     elements.floorXBtn.disabled         = !hasSeries;
-    elements.autoscaleYBtn.disabled     = !hasYData;
+    elements.autoscaleYBtn.disabled     = !(hasYData || isHist1d);
     elements.autoscaleYErrBtn.disabled  = !hasYerr;
     elements.floorYBtn.disabled         = !hasYData;
     elements.zoomModeBtn.disabled       = !hasSeries;
@@ -2353,26 +2616,42 @@
 
   // ---------------------------------------------------------------------------
 
+  // Reverse a [lo, hi] range array when the axis is inverted.
+  function invertRange(range, inverted) {
+    if (!inverted || !range) return range;
+    return [range[1], range[0]];
+  }
+
   function autoscaleAxes(tab, includeXErr, includeYErr) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const xRange = computeXRange(tab.lastSeries, includeXErr, tab.xScale);
-    const yRange = computeYRange(tab.lastSeries, includeYErr, tab.yScale);
+    const xRange = invertRange(computeXRange(tab.lastSeries, includeXErr, tab.xScale), tab.invertX);
     const update = {};
     if (xRange) { update['xaxis.autorange'] = false; update['xaxis.range'] = xRange; }
-    if (yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = yRange; }
+    if (tab.lastSeries._hist1d) {
+      // Hist1d y-axis is Plotly-managed counts/density — reset to autorange.
+      update['yaxis.autorange'] = true;
+    } else {
+      const yRange = invertRange(computeYRange(tab.lastSeries, includeYErr, tab.yScale), tab.invertY);
+      if (yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = yRange; }
+    }
     if (Object.keys(update).length) window.Plotly.relayout(elements.plot, update);
   }
 
   function autoscaleXAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const range = computeXRange(tab.lastSeries, includeError, tab.xScale);
+    const range = invertRange(computeXRange(tab.lastSeries, includeError, tab.xScale), tab.invertX);
     if (!range) return;
     window.Plotly.relayout(elements.plot, { 'xaxis.autorange': false, 'xaxis.range': range });
   }
 
   function autoscaleYAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const range = computeYRange(tab.lastSeries, includeError, tab.yScale);
+    if (tab.lastSeries._hist1d) {
+      // Hist1d y-axis is Plotly-managed counts/density — reset to autorange.
+      window.Plotly.relayout(elements.plot, { 'yaxis.autorange': true });
+      return;
+    }
+    const range = invertRange(computeYRange(tab.lastSeries, includeError, tab.yScale), tab.invertY);
     if (!range) return;
     window.Plotly.relayout(elements.plot, { 'yaxis.autorange': false, 'yaxis.range': range });
   }
@@ -2438,28 +2717,28 @@
     if (doX) {
       const xRange = computeXRange(tab.lastSeries, false, tab.xScale);
       if (xRange) {
-        const cur  = fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null;
-        const minX = cur ? cur[0] : xRange[0];
-        const maxX = cur ? cur[1] : xRange[1];
-        const flrX = computeXFloor(tab, tab.lastSeries, xRange[0]);
-        if (Number.isFinite(minX) && Number.isFinite(maxX) && Number.isFinite(flrX) &&
-            minX < flrX && flrX < maxX) {
+        const cur    = fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null;
+        const natMin = cur ? Math.min(cur[0], cur[1]) : xRange[0];
+        const natMax = cur ? Math.max(cur[0], cur[1]) : xRange[1];
+        const flrX   = computeXFloor(tab, tab.lastSeries, xRange[0]);
+        if (Number.isFinite(natMin) && Number.isFinite(natMax) && Number.isFinite(flrX) &&
+            natMin < flrX && flrX < natMax) {
           update['xaxis.autorange'] = false;
-          update['xaxis.range']     = [flrX, maxX];
+          update['xaxis.range']     = tab.invertX ? [natMax, flrX] : [flrX, natMax];
         }
       }
     }
     if (doY) {
       const yRange = computeYRange(tab.lastSeries, false, tab.yScale);
       if (yRange) {
-        const cur  = fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null;
-        const minY = cur ? cur[0] : yRange[0];
-        const maxY = cur ? cur[1] : yRange[1];
-        const flrY = computeYFloor(tab, tab.lastSeries, yRange[0]);
-        if (Number.isFinite(minY) && Number.isFinite(maxY) && Number.isFinite(flrY) &&
-            minY < flrY && flrY < maxY) {
+        const cur    = fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null;
+        const natMin = cur ? Math.min(cur[0], cur[1]) : yRange[0];
+        const natMax = cur ? Math.max(cur[0], cur[1]) : yRange[1];
+        const flrY   = computeYFloor(tab, tab.lastSeries, yRange[0]);
+        if (Number.isFinite(natMin) && Number.isFinite(natMax) && Number.isFinite(flrY) &&
+            natMin < flrY && flrY < natMax) {
           update['yaxis.autorange'] = false;
-          update['yaxis.range']     = [flrY, maxY];
+          update['yaxis.range']     = tab.invertY ? [natMax, flrY] : [flrY, natMax];
         }
       }
     }
@@ -2472,12 +2751,15 @@
     if (!range) return;
     const fl           = elements.plot && elements.plot._fullLayout;
     const currentRange = fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null;
-    const currentMin   = currentRange ? currentRange[0] : range[0];
-    const currentMax   = currentRange ? currentRange[1] : range[1];
+    const natMin       = currentRange ? Math.min(currentRange[0], currentRange[1]) : range[0];
+    const natMax       = currentRange ? Math.max(currentRange[0], currentRange[1]) : range[1];
     const floor        = computeXFloor(tab, tab.lastSeries, range[0]);
-    if (!Number.isFinite(currentMin) || !Number.isFinite(currentMax) || !Number.isFinite(floor)) return;
-    if (currentMin >= floor || floor >= currentMax) return;
-    window.Plotly.relayout(elements.plot, { 'xaxis.autorange': false, 'xaxis.range': [floor, currentMax] });
+    if (!Number.isFinite(natMin) || !Number.isFinite(natMax) || !Number.isFinite(floor)) return;
+    if (natMin >= floor || floor >= natMax) return;
+    window.Plotly.relayout(elements.plot, {
+      'xaxis.autorange': false,
+      'xaxis.range': tab.invertX ? [natMax, floor] : [floor, natMax]
+    });
   }
 
   function applyYFloor(tab) {
@@ -2486,12 +2768,15 @@
     if (!range) return;
     const fl           = elements.plot && elements.plot._fullLayout;
     const currentRange = fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null;
-    const currentMin   = currentRange ? currentRange[0] : range[0];
-    const currentMax   = currentRange ? currentRange[1] : range[1];
+    const natMin       = currentRange ? Math.min(currentRange[0], currentRange[1]) : range[0];
+    const natMax       = currentRange ? Math.max(currentRange[0], currentRange[1]) : range[1];
     const floor        = computeYFloor(tab, tab.lastSeries, range[0]);
-    if (!Number.isFinite(currentMin) || !Number.isFinite(currentMax) || !Number.isFinite(floor)) return;
-    if (currentMin >= floor || floor >= currentMax) return;
-    window.Plotly.relayout(elements.plot, { 'yaxis.autorange': false, 'yaxis.range': [floor, currentMax] });
+    if (!Number.isFinite(natMin) || !Number.isFinite(natMax) || !Number.isFinite(floor)) return;
+    if (natMin >= floor || floor >= natMax) return;
+    window.Plotly.relayout(elements.plot, {
+      'yaxis.autorange': false,
+      'yaxis.range': tab.invertY ? [natMax, floor] : [floor, natMax]
+    });
   }
 
   function computeXFloor(tab, series, minValue) {
@@ -2705,17 +2990,134 @@
     return out;
   }
 
-  function applyScaleValue(value, scale) {
+  // Compute the median of all finite values in `values`.
+  // Used as the subtracted offset for exp scale so that exp(0) = 1 falls at the
+  // median of the dataset — preventing overflow for data far from zero.
+  function computeExpOffset(values) {
+    const finite = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (Number.isFinite(v)) finite.push(v);
+    }
+    if (!finite.length) return 0;
+    finite.sort((a, b) => a - b);
+    const mid = Math.floor(finite.length / 2);
+    return finite.length % 2 === 0 ? (finite[mid - 1] + finite[mid]) / 2 : finite[mid];
+  }
+
+  // Inverse of applyScaleValue — maps a display-space value back to original data space.
+  function inverseScaleValue(t, scale, expOffset = 0) {
+    if (!Number.isFinite(t)) return NaN;
+    if (scale === 'sinh')  return Math.asinh(t);
+    if (scale === 'asinh') return Math.sinh(t);
+    if (scale === 'exp')   return t > 0 ? Math.log(t) + expOffset : NaN;
+    return t;
+  }
+
+  // Min/max of finite values in arr; returns [min, max] or null if none.
+  function arrayRange(arr) {
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (Number.isFinite(v)) { if (v < min) min = v; if (v > max) max = v; }
+    }
+    return Number.isFinite(min) ? [min, max] : null;
+  }
+
+  // Generate "nice" round tick values in [min, max] targeting ~count ticks.
+  function generateNiceTicks(min, max, count = 6) {
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return [];
+    const rough = (max - min) / count;
+    const mag   = Math.pow(10, Math.floor(Math.log10(Math.abs(rough) || 1)));
+    const norm  = rough / mag;
+    const step  = norm < 1.5 ? mag : norm < 3.5 ? 2 * mag : norm < 7.5 ? 5 * mag : 10 * mag;
+    const ticks = [];
+    let v = Math.ceil(min / step - 1e-9) * step;
+    while (v <= max + step * 1e-9 && ticks.length < 20) {
+      ticks.push(parseFloat(v.toPrecision(12)));  // strip float noise
+      v = Math.round((v + step) / step) * step;
+    }
+    return ticks;
+  }
+
+  // Format a number for a tick label: fixed notation with appropriate precision,
+  // scientific for very large/small values.
+  function formatTickLabel(x) {
+    if (!Number.isFinite(x)) return '';
+    if (x === 0) return '0';
+    const abs = Math.abs(x);
+    if (abs >= 1e5 || abs < 1e-3) return x.toExponential(2);
+    if (abs >= 100) return parseFloat(x.toFixed(0)).toString();
+    if (abs >= 10)  return parseFloat(x.toFixed(1)).toString();
+    if (abs >= 1)   return parseFloat(x.toFixed(2)).toString();
+    if (abs >= 0.1) return parseFloat(x.toFixed(3)).toString();
+    return parseFloat(x.toFixed(4)).toString();
+  }
+
+  // For sinh / asinh / exp axes: compute Plotly tickvals (in transformed display space)
+  // and ticktext (original data values) for the given visible range [tMin, tMax].
+  // Returns {} for linear/log10 — Plotly handles those natively.
+  function niceTicksForCustomScale(scale, tMin, tMax, expOffset = 0) {
+    if (scale === 'linear' || scale === 'log10') return {};
+    if (!Number.isFinite(tMin) || !Number.isFinite(tMax) || tMin >= tMax) return {};
+    const xMin = inverseScaleValue(tMin, scale, expOffset);
+    const xMax = inverseScaleValue(tMax, scale, expOffset);
+    if (!Number.isFinite(xMin) || !Number.isFinite(xMax)) return {};
+    // Extend range so a slight pan doesn't immediately exhaust the pre-computed ticks
+    const pad   = (xMax - xMin) * 0.5;
+    const ticks = generateNiceTicks(xMin - pad, xMax + pad, 6);
+    if (!ticks.length) return {};
+    const tickvals = [], ticktext = [];
+    for (const x of ticks) {
+      const t = applyScaleValue(x, scale, expOffset);
+      if (Number.isFinite(t)) { tickvals.push(t); ticktext.push(formatTickLabel(x)); }
+    }
+    return tickvals.length ? { tickmode: 'array', tickvals, ticktext } : {};
+  }
+
+  // Refresh tick labels on the live chart after a pan/zoom changes the axis range.
+  // Only acts on custom scales (sinh/asinh/exp); no-op for linear/log10.
+  // Guards tab._tickBusy to prevent the tick relayout from triggering another update.
+  function updateCustomScaleTicks(tab, xRange, yRange) {
+    if (!window.Plotly || !elements.plot || !tab || tab._tickBusy) return;
+    const needsX = (tab.xScale === 'sinh' || tab.xScale === 'asinh' || tab.xScale === 'exp');
+    const needsY = (tab.yScale === 'sinh' || tab.yScale === 'asinh' || tab.yScale === 'exp');
+    if (!needsX && !needsY) return;
+    const update = {};
+    if (needsX && Array.isArray(xRange)) {
+      const ticks = niceTicksForCustomScale(tab.xScale, xRange[0], xRange[1], tab._lastXExpOffset || 0);
+      if (ticks.tickvals) {
+        update['xaxis.tickmode'] = 'array';
+        update['xaxis.tickvals'] = ticks.tickvals;
+        update['xaxis.ticktext'] = ticks.ticktext;
+      }
+    }
+    if (needsY && Array.isArray(yRange)) {
+      const ticks = niceTicksForCustomScale(tab.yScale, yRange[0], yRange[1], tab._lastYExpOffset || 0);
+      if (ticks.tickvals) {
+        update['yaxis.tickmode'] = 'array';
+        update['yaxis.tickvals'] = ticks.tickvals;
+        update['yaxis.ticktext'] = ticks.ticktext;
+      }
+    }
+    if (!Object.keys(update).length) return;
+    tab._tickBusy = true;
+    window.Plotly.relayout(elements.plot, update)
+      .then(() => { tab._tickBusy = false; });
+  }
+
+  function applyScaleValue(value, scale, expOffset = 0) {
     if (!Number.isFinite(value)) return NaN;
     if (scale === 'log10') return value > 0 ? Math.log10(value) : NaN;
+    if (scale === 'exp')   { const v = Math.exp(value - expOffset); return Number.isFinite(v) ? v : NaN; }
     if (scale === 'sinh')  return Math.sinh(value);
     if (scale === 'asinh') return Math.asinh(value);
     return value;
   }
 
-  function applyScaleArray(values, scale) {
+  function applyScaleArray(values, scale, expOffset = 0) {
     const out = new Array(values.length);
-    for (let i = 0; i < values.length; i++) out[i] = applyScaleValue(values[i], scale);
+    for (let i = 0; i < values.length; i++) out[i] = applyScaleValue(values[i], scale, expOffset);
     return out;
   }
 
@@ -2728,27 +3130,35 @@
     return out;
   }
 
-  function prepareAxisValues(values, scale) {
-    return scale === 'log10' ? sanitizeLogValues(values) : applyScaleArray(values, scale);
+  // expOffset is only used when scale === 'exp'; callers should pass computeExpOffset(values)
+  // for the relevant raw array so that axis data and its error bounds use the same offset.
+  function prepareAxisValues(values, scale, expOffset = 0) {
+    return scale === 'log10' ? sanitizeLogValues(values) : applyScaleArray(values, scale, expOffset);
   }
 
-  function prepareBounds(values, errValues, scale) {
+  function prepareBounds(values, errValues, scale, expOffset = 0) {
     const lower = values.map((v, i) => v - errValues[i]);
     const upper = values.map((v, i) => v + errValues[i]);
     if (scale === 'log10') {
       return { lower: sanitizeLogValues(lower), upper: sanitizeLogValues(upper) };
     }
-    return { lower: applyScaleArray(lower, scale), upper: applyScaleArray(upper, scale) };
+    return {
+      lower: applyScaleArray(lower, scale, expOffset),
+      upper: applyScaleArray(upper, scale, expOffset)
+    };
   }
 
   // Like prepareBounds but with separate lower-σ and upper-σ arrays (asymmetric errors).
-  function prepareAsymBounds(values, errLowValues, errHighValues, scale) {
+  function prepareAsymBounds(values, errLowValues, errHighValues, scale, expOffset = 0) {
     const lower = values.map((v, i) => v - errLowValues[i]);
     const upper = values.map((v, i) => v + errHighValues[i]);
     if (scale === 'log10') {
       return { lower: sanitizeLogValues(lower), upper: sanitizeLogValues(upper) };
     }
-    return { lower: applyScaleArray(lower, scale), upper: applyScaleArray(upper, scale) };
+    return {
+      lower: applyScaleArray(lower, scale, expOffset),
+      upper: applyScaleArray(upper, scale, expOffset)
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -2758,11 +3168,12 @@
   // Compute 1D histogram in transformed space.
   // Returns { xCenters, width, counts, tMin, tMax, nTotal } or null if insufficient data.
   function computeHist1d(values, scale, nBins) {
+    const expOffset = scale === 'exp' ? computeExpOffset(values) : 0;
     const n = values.length;
     let tMin = Infinity, tMax = -Infinity;
     let validCount = 0;
     for (let i = 0; i < n; i++) {
-      const t = applyScaleValue(values[i], scale);
+      const t = applyScaleValue(values[i], scale, expOffset);
       if (!Number.isFinite(t)) continue;
       if (t < tMin) tMin = t;
       if (t > tMax) tMax = t;
@@ -2773,7 +3184,7 @@
     const step    = (tMax - tMin) / nBins;
     const counts  = new Array(nBins).fill(0);
     for (let i = 0; i < n; i++) {
-      const t = applyScaleValue(values[i], scale);
+      const t = applyScaleValue(values[i], scale, expOffset);
       if (!Number.isFinite(t)) continue;
       let bin = Math.floor((t - tMin) / step);
       if (bin >= nBins) bin = nBins - 1;
@@ -2796,18 +3207,24 @@
   }
 
   // Compute 2D histogram in transformed space.
+  // xRangeT / yRangeT are optional [min, max] bounds in transformed space;
+  // when supplied the corresponding axis is not auto-ranged from the data.
   // Returns { xCenters, yCenters, xStep, yStep, z, nTotal } or null.
-  function computeHist2d(xValues, yValues, xScale, yScale, nBinsX, nBinsY) {
+  function computeHist2d(xValues, yValues, xScale, yScale, nBinsX, nBinsY, xRangeT, yRangeT) {
+    const xExpOffset = xScale === 'exp' ? computeExpOffset(xValues) : 0;
+    const yExpOffset = yScale === 'exp' ? computeExpOffset(yValues) : 0;
     const limit = Math.min(xValues.length, yValues.length);
-    let xMin = Infinity, xMax = -Infinity;
-    let yMin = Infinity, yMax = -Infinity;
+    let xMin = xRangeT ? xRangeT[0] : Infinity;
+    let xMax = xRangeT ? xRangeT[1] : -Infinity;
+    let yMin = yRangeT ? yRangeT[0] : Infinity;
+    let yMax = yRangeT ? yRangeT[1] : -Infinity;
     let validCount = 0;
     for (let i = 0; i < limit; i++) {
-      const xt = applyScaleValue(xValues[i], xScale);
-      const yt = applyScaleValue(yValues[i], yScale);
+      const xt = applyScaleValue(xValues[i], xScale, xExpOffset);
+      const yt = applyScaleValue(yValues[i], yScale, yExpOffset);
       if (!Number.isFinite(xt) || !Number.isFinite(yt)) continue;
-      if (xt < xMin) xMin = xt; if (xt > xMax) xMax = xt;
-      if (yt < yMin) yMin = yt; if (yt > yMax) yMax = yt;
+      if (!xRangeT) { if (xt < xMin) xMin = xt; if (xt > xMax) xMax = xt; }
+      if (!yRangeT) { if (yt < yMin) yMin = yt; if (yt > yMax) yMax = yt; }
       validCount++;
     }
     if (validCount < 4 || xMin === xMax || yMin === yMax) return null;
@@ -2818,8 +3235,8 @@
     // z[yBin][xBin] — row-major, y-axis first (Plotly heatmap convention)
     const z = Array.from({ length: nBinsY }, () => new Array(nBinsX).fill(0));
     for (let i = 0; i < limit; i++) {
-      const xt = applyScaleValue(xValues[i], xScale);
-      const yt = applyScaleValue(yValues[i], yScale);
+      const xt = applyScaleValue(xValues[i], xScale, xExpOffset);
+      const yt = applyScaleValue(yValues[i], yScale, yExpOffset);
       if (!Number.isFinite(xt) || !Number.isFinite(yt)) continue;
       let xBin = Math.floor((xt - xMin) / xStep);
       let yBin = Math.floor((yt - yMin) / yStep);
@@ -2850,6 +3267,129 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // KDE computation helper
+  // ---------------------------------------------------------------------------
+
+  // Compute a Gaussian KDE density estimate for `values` in transformed space.
+  // Uses Silverman's rule-of-thumb bandwidth on up to SUBSAMPLE_MAX points.
+  // Returns { xs, ys } where xs/ys are nGrid-point evaluation grids (in
+  // transformed space), or null if there is not enough valid data.
+  // For log10 axes, xs must be back-transformed before plotting.
+  // bwMultiplier scales Silverman's bandwidth: < 1 sharpens (fewer bins), > 1 smooths.
+  // Mapping: pass (defaultBins / nBins) so that doubling the bin count halves the bandwidth.
+  function computeKde1d(values, scale, nGrid = 512, bwMultiplier = 1) {
+    const SUBSAMPLE_MAX = 5000;
+    const expOffset = scale === 'exp' ? computeExpOffset(values) : 0;
+
+    // Transform values into working space
+    const transformed = [];
+    for (let i = 0; i < values.length; i++) {
+      const t = applyScaleValue(values[i], scale, expOffset);
+      if (Number.isFinite(t)) transformed.push(t);
+    }
+    const n = transformed.length;
+    if (n < 4) return null;
+
+    // Subsample for bandwidth estimation if very large
+    let sample = transformed;
+    if (n > SUBSAMPLE_MAX) {
+      // Systematic subsample (every k-th point)
+      const step = Math.floor(n / SUBSAMPLE_MAX);
+      sample = [];
+      for (let i = 0; i < n; i += step) sample.push(transformed[i]);
+    }
+
+    // Silverman's bandwidth
+    const m = sample.length;
+    let mean = 0;
+    for (let i = 0; i < m; i++) mean += sample[i];
+    mean /= m;
+    let variance = 0;
+    for (let i = 0; i < m; i++) variance += (sample[i] - mean) ** 2;
+    const stddev = Math.sqrt(variance / m);
+
+    // IQR-based robust bandwidth (Scott's+Silverman blended via min-std-IQR rule)
+    const sorted = sample.slice().sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(m * 0.25)];
+    const q3 = sorted[Math.floor(m * 0.75)];
+    const iqr = q3 - q1;
+    const s = Math.min(stddev, iqr / 1.34) || stddev;
+    const bw = 1.06 * s * Math.pow(m, -0.2) * Math.max(0.05, bwMultiplier);
+    if (!Number.isFinite(bw) || bw <= 0) return null;
+
+    // Evaluation grid in transformed space
+    const tMin = sorted[0];
+    const tMax = sorted[sorted.length - 1];
+    const pad  = 3 * bw;
+    const gridMin = tMin - pad;
+    const gridMax = tMax + pad;
+    const gridStep = (gridMax - gridMin) / (nGrid - 1);
+
+    // Evaluate KDE at each grid point using the (possibly subsampled) array
+    const evalPts = sample;  // bandwidth-optimal subsample; density is normalized by its length
+    const ne = evalPts.length;
+    const inv2bw2 = 1 / (2 * bw * bw);
+    const norm = ne * bw * Math.sqrt(2 * Math.PI);
+    const xs = new Array(nGrid);
+    const ys = new Array(nGrid);
+    for (let gi = 0; gi < nGrid; gi++) {
+      const tx = gridMin + gi * gridStep;
+      let sum = 0;
+      for (let i = 0; i < ne; i++) {
+        const d = tx - evalPts[i];
+        sum += Math.exp(-(d * d) * inv2bw2);
+      }
+      xs[gi] = tx;
+      ys[gi] = sum / norm;
+    }
+
+    return { xs, ys, bw, tMin, tMax, nTotal: n };
+  }
+
+  // Separable 2D Gaussian blur for smoothing a histogram z matrix.
+  // `sigma` is in units of bins. Edges are handled by clamping.
+  function gaussianBlur2d(z, sigma) {
+    const rows = z.length;
+    if (!rows) return z;
+    const cols = z[0].length;
+    const radius = Math.ceil(3 * sigma);
+    const kernel = [];
+    let kernelSum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const v = Math.exp(-(k * k) / (2 * sigma * sigma));
+      kernel.push(v);
+      kernelSum += v;
+    }
+    for (let k = 0; k < kernel.length; k++) kernel[k] /= kernelSum;
+
+    // Blur along X (columns) first
+    const blurX = z.map((row) => {
+      const out = new Array(cols);
+      for (let c = 0; c < cols; c++) {
+        let s = 0;
+        for (let k = -radius; k <= radius; k++) {
+          s += kernel[k + radius] * row[Math.max(0, Math.min(cols - 1, c + k))];
+        }
+        out[c] = s;
+      }
+      return out;
+    });
+
+    // Blur along Y (rows)
+    const result = Array.from({ length: rows }, () => new Array(cols));
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let s = 0;
+        for (let k = -radius; k <= radius; k++) {
+          s += kernel[k + radius] * blurX[Math.max(0, Math.min(rows - 1, r + k))][c];
+        }
+        result[r][c] = s;
+      }
+    }
+    return result;
+  }
+
   // Resolve the axis label for histogram modes.
   // For log10 we use Plotly's native log axis (same as scatter), so no prefix is needed —
   // the axis type itself conveys the scale. sinh/asinh data is pre-transformed, so we
@@ -2864,42 +3404,93 @@
     return col;   // linear and log10: axis type conveys the transformation
   }
 
+  // Shared colorbar builder for 2D histogram modes.
+  // bgcolor matches the app background so the bar doesn't look "floating".
+  function buildHist2dColorbar(titleText, theme) {
+    return {
+      title: { text: titleText, side: 'right', font: { size: 13, color: theme.fontColor } },
+      thickness: 14,
+      tickfont:  { size: 12, color: theme.fontColor },
+      tickcolor:    theme.axisColor,
+      outlinewidth: 0,
+      bgcolor: state.darkMode ? '#07080e' : '#ffffff'
+    };
+  }
+
   // Build a Plotly spec for Hist (1D)
   function buildHist1dSpec(tab, xRawValues) {
-    const theme  = getThemeColors();
-    const nBins  = Math.max(1, Math.min(tab.histNBins || 50, 2000));
-    const scale  = tab.xScale || 'linear';
-    const hist   = computeHist1d(xRawValues, scale, nBins);
-    if (!hist) return null;
+    const theme   = getThemeColors();
+    const scale   = tab.xScale || 'linear';
+    const useLogX = scale === 'log10';
+    const xLabel  = resolveHistAxisLabel(tab, 'x');
+    const kdeMode = Boolean(tab.histKde);
 
-    const useLogX  = scale === 'log10';
-    const xLabel   = resolveHistAxisLabel(tab, 'x');
+    // Compute and store the exp offset so the pan/zoom handler can reuse it.
+    const xExpOffset = scale === 'exp' ? computeExpOffset(xRawValues) : 0;
+    tab._lastXExpOffset = xExpOffset;
+    tab._lastYExpOffset = 0;  // Y axis is always linear for hist1d
 
-    // For log10: bars must be left-aligned at the raw left edge of each bin so
-    // they span [10^(tMin+i·step), 10^(tMin+(i+1)·step)] exactly (no overlap).
-    // For linear/sinh/asinh: the transformed center is the arithmetic midpoint,
-    // so the default centering is already exact.
-    const xBarPositions = useLogX
-      ? Array.from({ length: hist.xCenters.length }, (_, i) =>
-          Math.pow(10, hist.tMin + i * hist.width))
-      : hist.xCenters;
+    let trace, yAxisTitle, xTickRange;
 
-    const trace    = {
-      x:      xBarPositions,
-      y:      hist.counts,
-      width:  useLogX ? hist.rawWidths : hist.width,
-      offset: useLogX ? 0 : undefined,
-      type: 'bar',
-      marker: {
-        color: theme.markerColor,
-        opacity: 0.75,
-        line: { color: theme.lineColor, width: 0.5 }
-      },
-      hovertemplate: `${xLabel}: %{x:.4g}<br>Count: %{y}<extra></extra>`
-    };
+    if (kdeMode) {
+      // ── KDE density curve ───────────────────────────────────────────────
+      // X Bins controls bandwidth: more bins → narrower bandwidth (sharper).
+      // Reference is 50 bins (the default), so bwMultiplier = 50 / nBins.
+      const nBins       = Math.max(1, Math.min(tab.histNBins || 50, 2000));
+      const bwMultiplier = 50 / nBins;
+      const kde = computeKde1d(xRawValues, scale, 512, bwMultiplier);
+      if (!kde) return null;
+
+      // For log10 axes, back-transform grid xs to raw space so Plotly's native
+      // log axis handles display (same convention as all other log10 plots).
+      const xPlot = useLogX ? kde.xs.map((t) => Math.pow(10, t)) : kde.xs;
+
+      trace = {
+        x:    xPlot,
+        y:    kde.ys,
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: theme.lineColor, width: 2 },
+        fill: 'tozeroy',
+        fillcolor: theme.errScatterColor,
+        hovertemplate: `${xLabel}: %{x:.4g}<br>Density: %{y:.4g}<extra></extra>`
+      };
+      yAxisTitle = 'Density';
+      xTickRange = [kde.xs[0], kde.xs[kde.xs.length - 1]];
+    } else {
+      // ── Standard bar histogram ──────────────────────────────────────────
+      const nBins = Math.max(1, Math.min(tab.histNBins || 50, 2000));
+      const hist  = computeHist1d(xRawValues, scale, nBins);
+      if (!hist) return null;
+
+      // For log10: bars must be left-aligned at the raw left edge of each bin so
+      // they span [10^(tMin+i·step), 10^(tMin+(i+1)·step)] exactly (no overlap).
+      // For linear/sinh/asinh: the transformed center is the arithmetic midpoint,
+      // so the default centering is already exact.
+      const xBarPositions = useLogX
+        ? Array.from({ length: hist.xCenters.length }, (_, i) =>
+            Math.pow(10, hist.tMin + i * hist.width))
+        : hist.xCenters;
+
+      trace = {
+        x:      xBarPositions,
+        y:      hist.counts,
+        width:  useLogX ? hist.rawWidths : hist.width,
+        offset: useLogX ? 0 : undefined,
+        type: 'bar',
+        marker: {
+          color: theme.markerColor,
+          opacity: 0.75,
+          line: { color: theme.lineColor, width: 0.5 }
+        },
+        hovertemplate: `${xLabel}: %{x:.4g}<br>Count: %{y}<extra></extra>`
+      };
+      yAxisTitle = 'Count';
+      xTickRange = [hist.tMin, hist.tMax];
+    }
 
     const layout = {
-      uirevision: `${tab.id}-hist1d`,
+      uirevision: `${tab.id}-hist1d-${tab.invertX ? 'ix' : ''}`,
       title: { text: (tab.customTitle || '').trim() || tab.name, font: { size: 20, color: theme.fontColor } },
       margin: { l: 64, r: 24, t: 52, b: 56 },
       paper_bgcolor: theme.paperBg,
@@ -2913,10 +3504,13 @@
         gridcolor: theme.gridColor, linecolor: theme.gridColor,
         tickcolor: theme.axisColor, color: theme.axisColor,
         tickfont: { size: 13 },
-        zeroline: false, type: useLogX ? 'log' : 'linear', ...buildAxisFormat(scale)
+        zeroline: false, type: useLogX ? 'log' : 'linear',
+        autorange: tab.invertX ? 'reversed' : true,
+        ...buildAxisFormat(scale),
+        ...(xTickRange ? niceTicksForCustomScale(scale, xTickRange[0], xTickRange[1], xExpOffset) : {})
       },
       yaxis: {
-        title: { text: 'Count', font: { size: 14 } },
+        title: { text: yAxisTitle, font: { size: 14 } },
         gridcolor: theme.gridColor, linecolor: theme.gridColor,
         tickcolor: theme.axisColor, color: theme.axisColor,
         tickfont: { size: 13 },
@@ -2932,56 +3526,272 @@
 
   // Build a Plotly spec for Hist (2D)
   function buildHist2dSpec(tab, xRawValues, yRawValues) {
-    const theme        = getThemeColors();
-    const nBinsX       = Math.max(2, Math.min(tab.histNBins  || 50, 500));
-    const nBinsY       = Math.max(2, Math.min(tab.histNBinsY || 50, 500));
-    const xScale       = tab.xScale || 'linear';
-    const yScale       = tab.yScale || 'linear';
-    const densityScale = tab.histDensityScale || 'linear';
-    const showMarginal = Boolean(tab.histShowMarginal);
-    const hist         = computeHist2d(xRawValues, yRawValues, xScale, yScale, nBinsX, nBinsY);
-    if (!hist) return null;
-
-    const xLabel = resolveHistAxisLabel(tab, 'x');
-    const yLabel = resolveHistAxisLabel(tab, 'y');
-
-    // Apply density scale transformation to z values
-    let z = hist.z;
-    if (densityScale !== 'linear') {
-      z = hist.z.map((row) => row.map((v) => {
-        const t = applyScaleValue(v || 0, densityScale);
-        return Number.isFinite(t) ? t : null;
-      }));
-    }
-
-    const colorscaleLabel = densityScale !== 'linear' ? `${densityScale}(Count)` : 'Count';
-    // Fixed white→black colorscale: empty cells are white, densest cells are black.
-    const colorscale = [[0, '#ffffff'], [1, '#000000']];
-
-    const colorbar = {
-      title: { text: colorscaleLabel, side: 'right', font: { size: 13, color: theme.fontColor } },
-      thickness: 14,
-      tickfont: { size: 12, color: theme.fontColor }
-    };
-
+    const theme   = getThemeColors();
+    const xScale  = tab.xScale || 'linear';
+    const yScale  = tab.yScale || 'linear';
     const useLogX = xScale === 'log10';
     const useLogY = yScale === 'log10';
+    const xLabel  = resolveHistAxisLabel(tab, 'x');
+    const yLabel  = resolveHistAxisLabel(tab, 'y');
+    const kdeMode = Boolean(tab.histKde);
 
-    const heatmapTrace = {
-      x: useLogX ? hist.rawXCenters : hist.xCenters,
-      y: useLogY ? hist.rawYCenters : hist.yCenters,
-      z,
-      type: 'heatmap',
-      colorscale,
-      colorbar,
-      hovertemplate: `${xLabel}: %{x:.4g}<br>${yLabel}: %{y:.4g}<br>Count: %{z:.0f}<extra></extra>`,
-      xgap: 0, ygap: 0
+    // Compute and store exp offsets so the pan/zoom handler can reuse them.
+    const xExpOffset = xScale === 'exp' ? computeExpOffset(xRawValues) : 0;
+    const yExpOffset = yScale === 'exp' ? computeExpOffset(yRawValues) : 0;
+    tab._lastXExpOffset = xExpOffset;
+    tab._lastYExpOffset = yExpOffset;
+
+    let traces;
+    let layoutExtra = {};
+    let xTickRange = null, yTickRange = null;
+
+    // Shared axis settings (tick info injected after data is computed below)
+    const xAxisBase = {
+      title: { text: xLabel, font: { size: 14 } },
+      gridcolor: theme.gridColor, linecolor: theme.gridColor,
+      tickcolor: theme.axisColor, color: theme.axisColor,
+      tickfont: { size: 13 },
+      zeroline: false, type: useLogX ? 'log' : 'linear',
+      autorange: tab.invertX ? 'reversed' : true,
+      ...buildAxisFormat(xScale)
+    };
+    const yAxisBase = {
+      title: { text: yLabel, font: { size: 14 } },
+      gridcolor: theme.gridColor, linecolor: theme.gridColor,
+      tickcolor: theme.axisColor, color: theme.axisColor,
+      tickfont: { size: 13 },
+      zeroline: false, type: useLogY ? 'log' : 'linear',
+      autorange: tab.invertY ? 'reversed' : true,
+      ...buildAxisFormat(yScale)
     };
 
-    const traces = [heatmapTrace];
+    if (kdeMode) {
+      // ── KDE contour plot ─────────────────────────────────────────────────
+      // Compute 1D KDEs for both axes first — their padded grid extents
+      // ([tMin-3bw, tMax+3bw] in transformed space) become the bounds for
+      // computeHist2d so the 2D contour covers the same region as the marginals.
+      // X/Y Bins controls bandwidth: 50-bin default = Silverman, more bins → sharper.
+      const nBinsX       = Math.max(10, Math.min(tab.histNBins  || 50, 300));
+      const nBinsY       = Math.max(10, Math.min(tab.histNBinsY || 50, 300));
+      const bwMultX      = 50 / nBinsX;
+      const bwMultY      = 50 / nBinsY;
+      const kdeX = computeKde1d(xRawValues, xScale, 256, bwMultX);
+      const kdeY = computeKde1d(yRawValues, yScale, 256, bwMultY);
+      if (!kdeX || !kdeY) return null;
+
+      const xRangeT = [kdeX.xs[0], kdeX.xs[kdeX.xs.length - 1]];
+      const yRangeT = [kdeY.xs[0], kdeY.xs[kdeY.xs.length - 1]];
+      xTickRange = xRangeT;
+      yTickRange = yRangeT;
+
+      const showMarginal = Boolean(tab.histShowMarginal);
+      const hist         = computeHist2d(
+        xRawValues, yRawValues, xScale, yScale, nBinsX, nBinsY, xRangeT, yRangeT
+      );
+      if (!hist) return null;
+
+      // Sigma scales with bin count so the blur width is roughly constant in
+      // data-space regardless of how many bins the user chose.
+      const sigma    = Math.max(1, Math.min(3, nBinsX / 25));
+      const zBlurred = gaussianBlur2d(hist.z, sigma);
+
+      // Fully opaque colorscale: start at the plot-background colour so that
+      // empty/low-density areas blend naturally into the background, and the
+      // colorbar itself renders a clean gradient without transparency artefacts.
+      //
+      // Intermediate stop is linearly interpolated between background and accent
+      // at t=0.35 so the gradient isn't too abrupt.
+      //   dark  bg=(7,8,14)      → mid=(26,75,77)  → #3ec8c2
+      //   light bg=(255,255,255) → mid=(169,204,204)→ #0a6f6d
+      const colorscale = state.darkMode
+        ? [[0, '#07080e'], [0.35, '#1a4b4d'], [1, '#3ec8c2']]
+        : [[0, '#ffffff'], [0.35, '#a9cccc'], [1, '#0a6f6d']];
+
+      const contourTrace = {
+        x: useLogX ? hist.rawXCenters : hist.xCenters,
+        y: useLogY ? hist.rawYCenters : hist.yCenters,
+        z: zBlurred,
+        type: 'contour',
+        colorscale,
+        showscale: true,
+        colorbar: buildHist2dColorbar('Density', theme),
+        ncontours: 12,
+        contours: { coloring: 'fill', showlines: true },
+        line: { color: theme.lineColor, width: 0.5, smoothing: 1.3 },
+        hovertemplate: `${xLabel}: %{x:.4g}<br>${yLabel}: %{y:.4g}<br>Density: %{z:.3g}<extra></extra>`
+      };
+      traces = [contourTrace];
+
+      if (showMarginal) {
+        // X marginal — smooth KDE curve along the x-axis, pinned to the bottom.
+        // Reuses the kdeX already computed above.
+        const xMargPlot = useLogX ? kdeX.xs.map((t) => Math.pow(10, t)) : kdeX.xs;
+        const maxXKde   = Math.max(...kdeX.ys) || 1;
+        traces.push({
+          x: xMargPlot, y: kdeX.ys,
+          type: 'scatter', mode: 'lines',
+          fill: 'tozeroy', fillcolor: 'rgba(214,39,40,0.2)',
+          line: { color: 'rgba(214,39,40,0.7)', width: 1.5 },
+          xaxis: 'x', yaxis: 'y2',
+          showlegend: false, hoverinfo: 'skip'
+        });
+        layoutExtra.yaxis2 = {
+          overlaying: 'y', range: [0, 5 * maxXKde],
+          showticklabels: false, showgrid: false,
+          zeroline: false, showline: false, fixedrange: true
+        };
+
+        // Y marginal — smooth KDE curve along the y-axis, pinned to the left.
+        // Reuses the kdeY already computed above.
+        const yMargPlot = useLogY ? kdeY.xs.map((t) => Math.pow(10, t)) : kdeY.xs;
+        const maxYKde   = Math.max(...kdeY.ys) || 1;
+        traces.push({
+          x: kdeY.ys, y: yMargPlot,
+          type: 'scatter', mode: 'lines',
+          fill: 'tozerox', fillcolor: 'rgba(214,39,40,0.2)',
+          line: { color: 'rgba(214,39,40,0.7)', width: 1.5 },
+          xaxis: 'x2', yaxis: 'y',
+          showlegend: false, hoverinfo: 'skip'
+        });
+        layoutExtra.xaxis2 = {
+          overlaying: 'x', range: [0, 5 * maxYKde],
+          showticklabels: false, showgrid: false,
+          zeroline: false, showline: false, fixedrange: true
+        };
+      }
+
+    } else {
+      // ── Standard heatmap ─────────────────────────────────────────────────
+      const nBinsX       = Math.max(2, Math.min(tab.histNBins  || 50, 500));
+      const nBinsY       = Math.max(2, Math.min(tab.histNBinsY || 50, 500));
+      const densityScale = tab.histDensityScale || 'linear';
+      const showMarginal = Boolean(tab.histShowMarginal);
+      const hist         = computeHist2d(xRawValues, yRawValues, xScale, yScale, nBinsX, nBinsY);
+      if (!hist) return null;
+      xTickRange = [hist.xMin, hist.xMax];
+      yTickRange = [hist.yMin, hist.yMax];
+
+      // Apply density scale transformation to z values
+      let z = hist.z;
+      if (densityScale !== 'linear') {
+        // For exp density scale, subtract the median of the non-zero bin counts so the
+        // mid-range count maps to exp(0) = 1, preventing overflow on high-count bins.
+        const densityExpOffset = densityScale === 'exp'
+          ? computeExpOffset([].concat(...hist.z).filter((v) => v > 0))
+          : 0;
+        z = hist.z.map((row) => row.map((v) => {
+          const t = applyScaleValue(v || 0, densityScale, densityExpOffset);
+          return Number.isFinite(t) ? t : null;
+        }));
+      }
+
+      const colorscaleLabel = densityScale !== 'linear' ? `${densityScale}(Count)` : 'Count';
+      // Light mode: white (empty) → black (dense).
+      // Dark mode: reversed so empty cells blend into the dark background and
+      // dense cells appear white/bright rather than vanishing.
+      const colorscale  = [[0, '#ffffff'], [1, '#000000']];
+      const reversescale = state.darkMode;
+
+      const heatmapTrace = {
+        x: useLogX ? hist.rawXCenters : hist.xCenters,
+        y: useLogY ? hist.rawYCenters : hist.yCenters,
+        z,
+        type: 'heatmap',
+        colorscale,
+        reversescale,
+        colorbar: buildHist2dColorbar(colorscaleLabel, theme),
+        hovertemplate: `${xLabel}: %{x:.4g}<br>${yLabel}: %{y:.4g}<br>Count: %{z:.0f}<extra></extra>`,
+        xgap: 0, ygap: 0
+      };
+
+      traces = [heatmapTrace];
+
+      if (showMarginal) {
+        // X marginal: distribution of X — sum z over all y-bins
+        const marginalX = new Array(nBinsX).fill(0);
+        for (let xi = 0; xi < nBinsX; xi++) {
+          for (let yi = 0; yi < nBinsY; yi++) marginalX[xi] += hist.z[yi][xi];
+        }
+
+        // Y marginal: distribution of Y — sum z over all x-bins
+        const marginalY = new Array(nBinsY).fill(0);
+        for (let yi = 0; yi < nBinsY; yi++) {
+          for (let xi = 0; xi < nBinsX; xi++) marginalY[yi] += hist.z[yi][xi];
+        }
+
+        const maxXMarg = Math.max(...marginalX) || 1;
+        const maxYMarg = Math.max(...marginalY) || 1;
+
+        // For log10 axes: left/bottom edges of each bin in raw space, used as bar
+        // positions with offset=0 so bars span exactly [leftEdge, rightEdge].
+        // For linear/sinh/asinh: transformed centers are arithmetic midpoints, so
+        // default bar centering is already exact (no offset needed).
+        const xBarPos = useLogX
+          ? Array.from({ length: nBinsX }, (_, i) => Math.pow(10, hist.xMin + i * hist.xStep))
+          : hist.xCenters;
+        const yBarPos = useLogY
+          ? Array.from({ length: nBinsY }, (_, i) => Math.pow(10, hist.yMin + i * hist.yStep))
+          : hist.yCenters;
+
+        // X marginal bars — vertical, at the bottom; shares main x-axis.
+        // Count scale lives on overlaid y2; range=[0, 5*max] maps y2=0 to the
+        // physical bottom so the bars occupy only the bottom ~20% of the heatmap.
+        traces.push({
+          x:      xBarPos,
+          y:      marginalX,
+          width:  useLogX ? hist.rawXWidths : hist.xStep,
+          offset: useLogX ? 0 : undefined,
+          type: 'bar',
+          xaxis: 'x', yaxis: 'y2',
+          marker: { color: 'rgba(214,39,40,0.3)', line: { width: 0 } },
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
+
+        // Y marginal bars — horizontal, at the left; shares main y-axis.
+        // Count scale lives on overlaid x2; range=[0, 5*max] maps x2=0 to the
+        // physical left so the bars occupy only the left ~20% of the heatmap.
+        traces.push({
+          x:      marginalY,
+          y:      yBarPos,
+          width:  useLogY ? hist.rawYWidths : hist.yStep,
+          offset: useLogY ? 0 : undefined,
+          type: 'bar', orientation: 'h',
+          xaxis: 'x2', yaxis: 'y',
+          marker: { color: 'rgba(214,39,40,0.3)', line: { width: 0 } },
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
+
+        // Overlaid count axes — cover the exact same plot area as the primary axes.
+        // No ticks, no grid, no labels; they exist only to provide an independent,
+        // fixed count scale for the marginal step lines.
+        //
+        // Range trick: [0, 5*max] maps the zero-baseline to the physical bottom/left
+        // edge of the plot, so each marginal occupies only the innermost ~20%.
+        // fixedrange:true ensures the count scale never moves when the user pans or
+        // zooms the primary axis — the marginals stay pinned to their edge.
+        layoutExtra.yaxis2 = {
+          overlaying: 'y',
+          range: [0, 5 * maxXMarg],
+          showticklabels: false, showgrid: false,
+          zeroline: false, showline: false, fixedrange: true
+        };
+        layoutExtra.xaxis2 = {
+          overlaying: 'x',
+          range: [0, 5 * maxYMarg],
+          showticklabels: false, showgrid: false,
+          zeroline: false, showline: false, fixedrange: true
+        };
+      }
+    }
+
+    // Inject custom-scale tick labels (sinh/asinh/exp) into the shared axis bases.
+    if (xTickRange) Object.assign(xAxisBase, niceTicksForCustomScale(xScale, xTickRange[0], xTickRange[1], xExpOffset));
+    if (yTickRange) Object.assign(yAxisBase, niceTicksForCustomScale(yScale, yTickRange[0], yTickRange[1], yExpOffset));
 
     const layout = {
-      uirevision: `${tab.id}-hist2d`,
+      uirevision: `${tab.id}-hist2d-${tab.invertX ? 'ix' : ''}-${tab.invertY ? 'iy' : ''}`,
       title: { text: (tab.customTitle || '').trim() || tab.name, font: { size: 20, color: theme.fontColor } },
       margin: { l: 64, r: 80, t: 52, b: 56 },
       paper_bgcolor: theme.paperBg,
@@ -2989,103 +3799,11 @@
       font: { size: 13, color: theme.fontColor, family: '"Space Grotesk", sans-serif' },
       showlegend: false,
       dragmode: tab.crosshair && tab.crosshair.enabled ? false : state.dragMode,
-      xaxis: {
-        title: { text: xLabel, font: { size: 14 } },
-        gridcolor: theme.gridColor, linecolor: theme.gridColor,
-        tickcolor: theme.axisColor, color: theme.axisColor,
-        tickfont: { size: 13 },
-        zeroline: false, type: useLogX ? 'log' : 'linear',
-        ...buildAxisFormat(xScale)
-      },
-      yaxis: {
-        title: { text: yLabel, font: { size: 14 } },
-        gridcolor: theme.gridColor, linecolor: theme.gridColor,
-        tickcolor: theme.axisColor, color: theme.axisColor,
-        tickfont: { size: 13 },
-        zeroline: false, type: useLogY ? 'log' : 'linear',
-        ...buildAxisFormat(yScale)
-      },
-      shapes: [], annotations: []
+      xaxis: xAxisBase,
+      yaxis: yAxisBase,
+      shapes: [], annotations: [],
+      ...layoutExtra
     };
-
-    if (showMarginal) {
-      // X marginal: distribution of X — sum z over all y-bins
-      const marginalX = new Array(nBinsX).fill(0);
-      for (let xi = 0; xi < nBinsX; xi++) {
-        for (let yi = 0; yi < nBinsY; yi++) marginalX[xi] += hist.z[yi][xi];
-      }
-
-      // Y marginal: distribution of Y — sum z over all x-bins
-      const marginalY = new Array(nBinsY).fill(0);
-      for (let yi = 0; yi < nBinsY; yi++) {
-        for (let xi = 0; xi < nBinsX; xi++) marginalY[yi] += hist.z[yi][xi];
-      }
-
-      const maxXMarg = Math.max(...marginalX) || 1;
-      const maxYMarg = Math.max(...marginalY) || 1;
-
-      // For log10 axes: left/bottom edges of each bin in raw space, used as bar
-      // positions with offset=0 so bars span exactly [leftEdge, rightEdge].
-      // For linear/sinh/asinh: transformed centers are arithmetic midpoints, so
-      // default bar centering is already exact (no offset needed).
-      const xBarPos = useLogX
-        ? Array.from({ length: nBinsX }, (_, i) => Math.pow(10, hist.xMin + i * hist.xStep))
-        : hist.xCenters;
-      const yBarPos = useLogY
-        ? Array.from({ length: nBinsY }, (_, i) => Math.pow(10, hist.yMin + i * hist.yStep))
-        : hist.yCenters;
-
-      // X marginal bars — vertical, at the bottom; shares main x-axis.
-      // Count scale lives on overlaid y2; range=[0, 5*max] maps y2=0 to the
-      // physical bottom so the bars occupy only the bottom ~20% of the heatmap.
-      traces.push({
-        x:      xBarPos,
-        y:      marginalX,
-        width:  useLogX ? hist.rawXWidths : hist.xStep,
-        offset: useLogX ? 0 : undefined,
-        type: 'bar',
-        xaxis: 'x', yaxis: 'y2',
-        marker: { color: 'rgba(214,39,40,0.3)', line: { width: 0 } },
-        showlegend: false,
-        hoverinfo: 'skip'
-      });
-
-      // Y marginal bars — horizontal, at the left; shares main y-axis.
-      // Count scale lives on overlaid x2; range=[0, 5*max] maps x2=0 to the
-      // physical left so the bars occupy only the left ~20% of the heatmap.
-      traces.push({
-        x:      marginalY,
-        y:      yBarPos,
-        width:  useLogY ? hist.rawYWidths : hist.yStep,
-        offset: useLogY ? 0 : undefined,
-        type: 'bar', orientation: 'h',
-        xaxis: 'x2', yaxis: 'y',
-        marker: { color: 'rgba(214,39,40,0.3)', line: { width: 0 } },
-        showlegend: false,
-        hoverinfo: 'skip'
-      });
-
-      // Overlaid count axes — cover the exact same plot area as the primary axes.
-      // No ticks, no grid, no labels; they exist only to provide an independent,
-      // fixed count scale for the marginal step lines.
-      //
-      // Range trick: [0, 5*max] maps the zero-baseline to the physical bottom/left
-      // edge of the plot, so each marginal occupies only the innermost ~20%.
-      // fixedrange:true ensures the count scale never moves when the user pans or
-      // zooms the primary axis — the marginals stay pinned to their edge.
-      layout.yaxis2 = {
-        overlaying: 'y',
-        range: [0, 5 * maxXMarg],
-        showticklabels: false, showgrid: false,
-        zeroline: false, showline: false, fixedrange: true
-      };
-      layout.xaxis2 = {
-        overlaying: 'x',
-        range: [0, 5 * maxYMarg],
-        showticklabels: false, showgrid: false,
-        zeroline: false, showline: false, fixedrange: true
-      };
-    }
 
     const config = { responsive: true, displaylogo: false, displayModeBar: false };
     return { data: traces, layout, config };

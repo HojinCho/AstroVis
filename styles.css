@@ -91,7 +91,7 @@ body.dark-mode.drag-over::after {
   padding: 0 24px;
   display: grid;
   gap: 20px;
-  animation: rise 0.6s ease-out both;
+  animation: rise 0.6s ease-out forwards;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────── */
@@ -236,7 +236,7 @@ h1 {
   box-shadow: var(--shadow);
   overflow: hidden;
   z-index: 200;
-  animation: menuIn 0.15s ease both;
+  animation: menuIn 0.15s ease forwards;
 }
 
 .file-menu.open {
@@ -297,7 +297,7 @@ body.dark-mode .file-menu-item:hover {
   font-size: 0.95rem;
   color: var(--ink);
   transition: border-color 0.2s ease, transform 0.2s ease, background var(--transition);
-  animation: tabIn 0.3s ease both;
+  animation: tabIn 0.3s ease forwards;
 }
 
 .tab:hover {
@@ -982,6 +982,20 @@ body.dark-mode .empty {
 @keyframes menuIn {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Reduced-motion / animation safety ──────────────────────────────── */
+
+/* When the user has requested reduced motion (System Preferences →
+   Accessibility → Reduce Motion on macOS/iOS), Safari can skip CSS
+   animations entirely.  Because the `from` keyframe has `opacity:0`,
+   skipping the animation leaves those elements permanently invisible.
+   Disabling the animations outright avoids this trap and also respects
+   the user's accessibility preference. */
+@media (prefers-reduced-motion: reduce) {
+  .app, .tab, .file-menu {
+    animation: none;
+  }
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────── */

@@ -87,6 +87,7 @@
                 <select id="histDensityScaleSelect" aria-label="Density Scale">
                   <option value="linear" selected>Linear</option>
                   <option value="log10">Log10</option>
+                  <option value="exp">Exp</option>
                   <option value="sinh">Sinh</option>
                   <option value="asinh">Asinh</option>
                 </select>
@@ -97,6 +98,14 @@
                   <input type="checkbox" id="histMarginalToggle" />
                   <span class="mini-slider"></span>
                   <span class="mini-label">Show</span>
+                </label>
+              </div>
+              <div class="control" id="histKdeControl">
+                <label>KDE</label>
+                <label class="mini-switch" title="Overlay a smooth kernel density estimate instead of bins">
+                  <input type="checkbox" id="histKdeToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Smooth</span>
                 </label>
               </div>
             </div>
@@ -192,19 +201,35 @@
 
               <!-- Row 3: X scale | Y scale -->
               <div class="control" id="xScaleControl">
-                <label for="xScaleSelect">X Scale</label>
+                <div class="err-header">
+                  <label for="xScaleSelect">X Scale</label>
+                  <label class="mini-switch" title="Invert X axis (higher values on left)">
+                    <input type="checkbox" id="xInvertToggle" />
+                    <span class="mini-slider"></span>
+                    <span class="mini-label">Invert</span>
+                  </label>
+                </div>
                 <select id="xScaleSelect" aria-label="X Scale">
                   <option value="linear" selected>Linear</option>
                   <option value="log10">Log10</option>
+                  <option value="exp">Exp</option>
                   <option value="sinh">Sinh</option>
                   <option value="asinh">Asinh</option>
                 </select>
               </div>
               <div class="control" id="yScaleControl">
-                <label for="yScaleSelect">Y Scale</label>
+                <div class="err-header">
+                  <label for="yScaleSelect">Y Scale</label>
+                  <label class="mini-switch" title="Invert Y axis (higher values at bottom)">
+                    <input type="checkbox" id="yInvertToggle" />
+                    <span class="mini-slider"></span>
+                    <span class="mini-label">Invert</span>
+                  </label>
+                </div>
                 <select id="yScaleSelect" aria-label="Y Scale">
                   <option value="linear" selected>Linear</option>
                   <option value="log10">Log10</option>
+                  <option value="exp">Exp</option>
                   <option value="sinh">Sinh</option>
                   <option value="asinh">Asinh</option>
                 </select>
@@ -237,12 +262,18 @@
       <section class="plot-wrap">
         <div class="plot-toolbar" aria-label="Plot tools">
           <div class="toolbar-row">
-            <button type="button" class="plot-button" id="autoscaleXYBtn">Auto XY</button>
-            <button type="button" class="plot-button" id="autoscaleXYErrBtn">Auto XY ±err</button>
-            <button type="button" class="plot-button" id="floorXYBtn">Limit XY Positive</button>
+            <button type="button" class="plot-button active" id="panModeBtn" aria-pressed="true">Pan</button>
+            <button type="button" class="plot-button" id="zoomModeBtn" aria-pressed="false">Zoom</button>
             <div class="toolbar-sep" aria-hidden="true"></div>
             <button type="button" class="plot-button" id="zoomInBtn">Zoom +</button>
             <button type="button" class="plot-button" id="zoomOutBtn">Zoom −</button>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="undoViewBtn" disabled title="Undo pan/zoom/scale">&#8592;</button>
+            <button type="button" class="plot-button" id="redoViewBtn" disabled title="Redo pan/zoom/scale">&#8594;</button>
+            <div class="toolbar-sep" aria-hidden="true"></div>
+            <button type="button" class="plot-button" id="autoscaleXYBtn">Auto XY</button>
+            <button type="button" class="plot-button" id="autoscaleXYErrBtn">Auto XY ±err</button>
+            <button type="button" class="plot-button" id="floorXYBtn">Limit XY Positive</button>
           </div>
           <div class="toolbar-row">
             <button type="button" class="plot-button" id="autoscaleXBtn">Auto X</button>
@@ -254,8 +285,6 @@
             <button type="button" class="plot-button" id="floorYBtn">Limit Y Positive</button>
           </div>
           <div class="toolbar-row">
-            <button type="button" class="plot-button" id="zoomModeBtn" aria-pressed="false">Zoom</button>
-            <button type="button" class="plot-button active" id="panModeBtn" aria-pressed="true">Pan</button>
             <button type="button" class="plot-button" id="crosshairToggle" aria-pressed="false">Crosshair</button>
             <button type="button" class="plot-button" id="clearCrosshairBtn" disabled>Clear</button>
             <div class="crosshair-readout" id="crosshairReadout">Crosshair off</div>
