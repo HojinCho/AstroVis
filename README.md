@@ -5,7 +5,7 @@ An attempt to make a very lightweight visualizer for FITS and CSV/TSV. Uses [Plo
 
 Use at your own risk. 
 
-### How to use.
+### How to use
 Download all files and open `index.html` via a web browser. Open a file using the button or drag-and-drop it onto the window.
 
 ### Features
