@@ -11,7 +11,8 @@ Download all files and open `index.html` via a web browser. Open a file using th
 ### Features
 - Simple scatter plot, step-like plot, 1d and 2d histograms.
 - Able to select points and examine them.
+- Able to display image files with minimal functionality.
 
 ### TODO
-- Add "Image" viewer for FITS images.
 - Add support for other file formats: ecsv, asdf, parquet, hdf5, ...
+- Make it run on Safari without problem.

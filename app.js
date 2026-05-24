@@ -82,6 +82,8 @@
       histNBinsInput:         document.getElementById('histNBinsInput'),
       histNBinsYInput:        document.getElementById('histNBinsYInput'),
       histDensityScaleSelect: document.getElementById('histDensityScaleSelect'),
+      histColorScaleSelect:   document.getElementById('histColorScaleSelect'),
+      histInvertColorToggle:  document.getElementById('histInvertColorToggle'),
       histMarginalToggle:     document.getElementById('histMarginalToggle'),
       histKdeToggle:          document.getElementById('histKdeToggle'),
       histOptionsRow:         document.getElementById('histOptionsRow'),
@@ -97,6 +99,20 @@
       headerHduSelect:   document.getElementById('headerHduSelect'),
       headerTableBody:   document.getElementById('headerTableBody'),
       headerEmpty:       document.getElementById('headerEmpty'),
+      imageColorScaleSelect:  document.getElementById('imageColorScaleSelect'),
+      imageInvertColorToggle: document.getElementById('imageInvertColorToggle'),
+      imageEqualAspectToggle: document.getElementById('imageEqualAspectToggle'),
+      imageSliceAxisSelect:   document.getElementById('imageSliceAxisSelect'),
+      imageSliceIndexInput:   document.getElementById('imageSliceIndexInput'),
+      imageWcsToggle:         document.getElementById('imageWcsToggle'),
+      imageYScaleSelect:      document.getElementById('imageYScaleSelect'),
+      imageYInvertToggle:     document.getElementById('imageYInvertToggle'),
+      imageXLabelInput:       document.getElementById('imageXLabelInput'),
+      imageYLabelInput:       document.getElementById('imageYLabelInput'),
+      imageXInvertToggle:     document.getElementById('imageXInvertToggle'),
+      imageYAxisInvertToggle: document.getElementById('imageYAxisInvertToggle'),
+      imageAxesSelect:          document.getElementById('imageAxesSelect'),
+      imageColorBarScaleSelect: document.getElementById('imageColorBarScaleSelect'),
       status:            document.getElementById('status'),
       plot:              document.getElementById('plot'),
       emptyState:        document.getElementById('emptyState'),
@@ -188,6 +204,8 @@
     elements.histNBinsInput.addEventListener('change', onHistOptionsChange);
     elements.histNBinsYInput.addEventListener('change', onHistOptionsChange);
     elements.histDensityScaleSelect.addEventListener('change', onHistOptionsChange);
+    elements.histColorScaleSelect.addEventListener('change', onHistOptionsChange);
+    elements.histInvertColorToggle.addEventListener('change', onHistOptionsChange);
     elements.histMarginalToggle.addEventListener('change', onHistOptionsChange);
     elements.histKdeToggle.addEventListener('change', onHistOptionsChange);
     elements.examineToggle.addEventListener('click', onExamineToggle);
@@ -195,6 +213,20 @@
     elements.deselectAllBtn.addEventListener('click', onDeselectAll);
     elements.examineExportBtn.addEventListener('click', onExamineExportCSV);
     elements.headerHduSelect.addEventListener('change', onHeaderHduChange);
+    elements.imageColorScaleSelect.addEventListener('change', onImageOptionsChange);
+    elements.imageInvertColorToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageEqualAspectToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageSliceAxisSelect.addEventListener('change', onImageOptionsChange);
+    elements.imageSliceIndexInput.addEventListener('change', onImageOptionsChange);
+    elements.imageWcsToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageYScaleSelect.addEventListener('change', onImageOptionsChange);
+    elements.imageYInvertToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageXLabelInput.addEventListener('input', onImageOptionsChange);
+    elements.imageYLabelInput.addEventListener('input', onImageOptionsChange);
+    elements.imageXInvertToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageYAxisInvertToggle.addEventListener('change', onImageOptionsChange);
+    elements.imageAxesSelect.addEventListener('change', onImageOptionsChange);
+    elements.imageColorBarScaleSelect.addEventListener('change', onImageOptionsChange);
 
     // Track shift key globally for examine additive/subtractive selection
     document.addEventListener('keydown', (e) => { if (e.key === 'Shift') _shiftKeyDown = true; });
@@ -399,6 +431,8 @@
       histNBins:         50,
       histNBinsY:        50,
       histDensityScale:  'linear',
+      histColorScale:    'default',
+      histInvertColor:   false,
       histShowMarginal:  false,
       histKde:           false,
       customXLabel: '',
@@ -406,6 +440,15 @@
       customTitle:  '',
       headerHduIndex: null,
       columnCache: {},
+      imageCache:  {},
+      imageColorScale:    'Viridis',
+      imageColorBarScale: 'linear',
+      imageEqualAspect:   true,
+      imageInvertColor:   false,
+      imageSliceAxis:     'x',
+      imageSliceIndex:    0,
+      imageShowWcs:       false,
+      imageShowAxesWcs:   false,
       lastPlotKey: null,
       lastPlot:    null,
       lastSeries:  null,
@@ -453,19 +496,43 @@
               header && typeof header.get === 'function' ? header.get('EXTNAME') : null;
             const columns  =
               dataUnit && Array.isArray(dataUnit.columns) ? dataUnit.columns : null;
-            return { index, header, dataUnit, dataType, extName, columns };
+            // Detect 2D image HDUs (NAXIS=2 with NAXIS1>0 and NAXIS2>0)
+            const naxis  = header && typeof header.get === 'function' ? header.get('NAXIS')  : null;
+            const naxis1 = header && typeof header.get === 'function' ? header.get('NAXIS1') : null;
+            const naxis2 = header && typeof header.get === 'function' ? header.get('NAXIS2') : null;
+            const _imageHdu = (
+              dataType === 'Image' &&
+              naxis === 2 &&
+              Number.isFinite(naxis1) && naxis1 > 0 &&
+              Number.isFinite(naxis2) && naxis2 > 0 &&
+              dataUnit && typeof dataUnit.getFrame === 'function'
+            );
+            return { index, header, dataUnit, dataType, extName, columns,
+                     _imageHdu, naxis1: _imageHdu ? naxis1 : null, naxis2: _imageHdu ? naxis2 : null };
           });
 
+          // tableHdus is now "plottable HDUs": table HDUs with columns + 2D image HDUs
           tab.tableHdus = tab.hdus.filter(
-            (h) => TABLE_TYPES.has(h.dataType) && h.columns && h.columns.length
+            (h) => (TABLE_TYPES.has(h.dataType) && h.columns && h.columns.length) || h._imageHdu
           );
 
+          const hasTableOnly = tab.tableHdus.some((h) => !h._imageHdu);
+          const hasImage     = tab.tableHdus.some((h) => h._imageHdu);
+
           if (!tab.tableHdus.length) {
-            setTabStatus(tab, 'error', 'No table HDU with columns was found.');
+            setTabStatus(tab, 'error', 'No plottable HDU found (no tables or 2D images).');
           } else if (tab.selectedHduIndex === null) {
             tab.selectedHduIndex = tab.tableHdus[0].index;
+            // Auto-select appropriate plot type based on first plottable HDU
+            if (tab.tableHdus[0]._imageHdu) {
+              tab.plotType = 'image';
+            }
             autoSelectColumns(tab);
-            setTabStatus(tab, 'ok', `Found ${tab.tableHdus.length} table HDU(s).`);
+            const desc = [
+              hasTableOnly ? 'table HDU(s)' : null,
+              hasImage ? 'image HDU(s)' : null
+            ].filter(Boolean).join(' + ');
+            setTabStatus(tab, 'ok', `Found ${tab.tableHdus.length} plottable HDU(s) (${desc}).`);
           }
 
           if (tab.id === state.activeTabId) {
@@ -663,13 +730,24 @@
   function closeTab(tabId) {
     const index = state.tabs.findIndex((t) => t.id === tabId);
     if (index === -1) return;
+    const wasActive = state.activeTabId === tabId;
     state.tabs.splice(index, 1);
-    if (state.activeTabId === tabId) {
-      state.activeTabId = state.tabs.length ? state.tabs[0].id : null;
+    if (wasActive) {
+      if (state.tabs.length) {
+        // Prefer the tab that now sits at the same index (was to the right),
+        // falling back to the one before it when the rightmost tab was closed.
+        const newIndex = Math.min(index, state.tabs.length - 1);
+        setActiveTab(state.tabs[newIndex].id);  // handles renderTabs + plot render
+      } else {
+        state.activeTabId = null;
+        renderTabs();
+        syncControlsForActiveTab();
+        clearPlot();
+      }
+    } else {
+      // Active tab is unaffected — just refresh the tab bar.
+      renderTabs();
     }
-    renderTabs();
-    syncControlsForActiveTab();
-    if (!state.activeTabId) clearPlot();
   }
 
   function getActiveTab() {
@@ -718,8 +796,24 @@
     elements.histNBinsInput.value         = tab.histNBins  || 50;
     elements.histNBinsYInput.value        = tab.histNBinsY || 50;
     elements.histDensityScaleSelect.value = tab.histDensityScale || 'linear';
+    elements.histColorScaleSelect.value   = tab.histColorScale   || 'default';
+    elements.histInvertColorToggle.checked = Boolean(tab.histInvertColor);
     elements.histMarginalToggle.checked   = Boolean(tab.histShowMarginal);
     elements.histKdeToggle.checked        = Boolean(tab.histKde);
+    elements.imageColorScaleSelect.value  = tab.imageColorScale  || 'Viridis';
+    elements.imageColorBarScaleSelect.value = tab.imageColorBarScale || 'linear';
+    elements.imageInvertColorToggle.checked = Boolean(tab.imageInvertColor);
+    elements.imageEqualAspectToggle.checked = tab.imageEqualAspect !== false;
+    elements.imageSliceAxisSelect.value   = tab.imageSliceAxis  || 'x';
+    elements.imageSliceIndexInput.value   = tab.imageSliceIndex != null ? tab.imageSliceIndex : 0;
+    elements.imageWcsToggle.checked       = Boolean(tab.imageShowWcs);
+    elements.imageYScaleSelect.value      = tab.yScale   || 'linear';
+    elements.imageYInvertToggle.checked   = Boolean(tab.invertY);
+    elements.imageXLabelInput.value       = tab.customXLabel || '';
+    elements.imageYLabelInput.value       = tab.customYLabel || '';
+    elements.imageXInvertToggle.checked   = Boolean(tab.invertX);
+    elements.imageYAxisInvertToggle.checked = Boolean(tab.invertY);
+    elements.imageAxesSelect.value        = tab.imageShowAxesWcs ? 'wcs' : 'pixel';
 
     // Sync tab state from UI (in case populate changed values)
     tab.plotType          = elements.plotTypeSelect.value  || 'scatter';
@@ -741,8 +835,39 @@
     tab.histNBins        = parseInt(elements.histNBinsInput.value,  10) || 50;
     tab.histNBinsY       = parseInt(elements.histNBinsYInput.value, 10) || 50;
     tab.histDensityScale = elements.histDensityScaleSelect.value || 'linear';
+    tab.histColorScale   = elements.histColorScaleSelect.value   || 'default';
+    tab.histInvertColor  = elements.histInvertColorToggle.checked;
     tab.histShowMarginal = elements.histMarginalToggle.checked;
     tab.histKde          = elements.histKdeToggle.checked;
+    tab.imageColorScale     = elements.imageColorScaleSelect.value     || 'Viridis';
+    tab.imageColorBarScale  = elements.imageColorBarScaleSelect.value  || 'linear';
+    tab.imageInvertColor = elements.imageInvertColorToggle.checked;
+    tab.imageEqualAspect = elements.imageEqualAspectToggle.checked;
+    tab.imageSliceAxis   = elements.imageSliceAxisSelect.value   || 'x';
+    tab.imageSliceIndex  = parseInt(elements.imageSliceIndexInput.value, 10) || 0;
+    tab.imageShowWcs     = elements.imageWcsToggle.checked;
+    tab.imageShowAxesWcs = elements.imageAxesSelect.value === 'wcs';
+    if (tab.plotType === 'imgslice') {
+      tab.yScale   = elements.imageYScaleSelect.value || 'linear';
+      tab.invertY  = elements.imageYInvertToggle.checked;
+      tab.invertX  = elements.imageXInvertToggle.checked;
+    } else if (tab.plotType === 'image') {
+      tab.invertX  = elements.imageXInvertToggle.checked;
+      tab.invertY  = elements.imageYAxisInvertToggle.checked;
+    }
+
+    // Hide/disable image/imgslice options when a table HDU is active; hide/disable
+    // table plot types when an image HDU is active.
+    const _selHdu = getSelectedHdu(tab);
+    const _isImgHdu = Boolean(_selHdu && _selHdu._imageHdu);
+    ['image', 'imgslice'].forEach((v) => {
+      const opt = elements.plotTypeSelect.querySelector(`option[value="${v}"]`);
+      if (opt) { opt.disabled = !_isImgHdu; opt.hidden = !_isImgHdu; }
+    });
+    ['scatter', 'spec', 'hist1d', 'hist2d'].forEach((v) => {
+      const opt = elements.plotTypeSelect.querySelector(`option[value="${v}"]`);
+      if (opt) { opt.disabled = _isImgHdu; opt.hidden = _isImgHdu; }
+    });
 
     updateStatus(tab);
     const controlsDisabled = !tab.tableHdus || !tab.tableHdus.length;
@@ -788,9 +913,25 @@
       elements.histNBinsInput.disabled         = true;
       elements.histNBinsYInput.disabled        = true;
       elements.histDensityScaleSelect.disabled = true;
+      elements.histColorScaleSelect.disabled   = true;
+      elements.histInvertColorToggle.disabled  = true;
       elements.histMarginalToggle.disabled     = true;
       elements.histKdeToggle.disabled          = true;
-      elements.controls.classList.remove('is-scatter', 'is-hist1d', 'is-hist2d');
+      elements.imageColorScaleSelect.disabled  = true;
+      elements.imageColorBarScaleSelect.disabled = true;
+      elements.imageInvertColorToggle.disabled = true;
+      elements.imageEqualAspectToggle.disabled = true;
+      elements.imageSliceAxisSelect.disabled   = true;
+      elements.imageSliceIndexInput.disabled   = true;
+      elements.imageWcsToggle.disabled         = true;
+      elements.imageYScaleSelect.disabled      = true;
+      elements.imageYInvertToggle.disabled     = true;
+      elements.imageXLabelInput.disabled       = true;
+      elements.imageYLabelInput.disabled       = true;
+      elements.imageXInvertToggle.disabled     = true;
+      elements.imageYAxisInvertToggle.disabled = true;
+      elements.imageAxesSelect.disabled        = true;
+      elements.controls.classList.remove('is-scatter', 'is-hist1d', 'is-hist2d', 'is-image', 'is-imgslice');
     }
   }
 
@@ -811,6 +952,10 @@
       let label;
       if (hdu.dataType === 'CSVTable') {
         label = hdu.extName ? `CSV - ${hdu.extName}` : 'CSV Table';
+      } else if (hdu._imageHdu) {
+        const parts = [`HDU ${hdu.index}`, `Image (${hdu.naxis1}×${hdu.naxis2})`];
+        if (hdu.extName) parts.push(hdu.extName);
+        label = parts.join(' - ');
       } else {
         const parts = [`HDU ${hdu.index}`, hdu.dataType];
         if (hdu.extName) parts.push(hdu.extName);
@@ -869,13 +1014,61 @@
   // FIX #2: toggle is-scatter on the controls div so .scatter-only CSS works
   // FIX #3: hide yerrStyleContainer (step-only) in scatter mode
   function updateScatterControls(tab) {
-    const isScatter = tab.plotType === 'scatter';
-    const isHist1d  = tab.plotType === 'hist1d';
-    const isHist2d  = tab.plotType === 'hist2d';
-    const isHist    = isHist1d || isHist2d;
-    elements.controls.classList.toggle('is-scatter', isScatter);
-    elements.controls.classList.toggle('is-hist1d',  isHist1d);
-    elements.controls.classList.toggle('is-hist2d',  isHist2d);
+    const isScatter  = tab.plotType === 'scatter';
+    const isHist1d   = tab.plotType === 'hist1d';
+    const isHist2d   = tab.plotType === 'hist2d';
+    const isHist     = isHist1d || isHist2d;
+    const isImage    = tab.plotType === 'image';
+    const isImgSlice = tab.plotType === 'imgslice';
+    const isImageAny = isImage || isImgSlice;
+    elements.controls.classList.toggle('is-scatter',  isScatter);
+    elements.controls.classList.toggle('is-hist1d',   isHist1d);
+    elements.controls.classList.toggle('is-hist2d',   isHist2d);
+    elements.controls.classList.toggle('is-image',    isImage);
+    elements.controls.classList.toggle('is-imgslice', isImgSlice);
+
+    if (isImageAny) {
+      // Image/Series modes: disable all table-specific controls
+      elements.xerrSelect.disabled      = true;
+      elements.xerrAsymToggle.disabled  = true;
+      elements.xerrLowerSelect.disabled = true;
+      elements.xerrUpperSelect.disabled = true;
+      elements.xerrTypeSelect.disabled  = true;
+      elements.xerrTypeSelect.value     = 'sigma';
+      elements.histNBinsInput.disabled         = true;
+      elements.histNBinsYInput.disabled        = true;
+      elements.histDensityScaleSelect.disabled = true;
+      elements.histColorScaleSelect.disabled   = true;
+      elements.histInvertColorToggle.disabled  = true;
+      elements.histMarginalToggle.disabled     = true;
+      elements.histKdeToggle.disabled          = true;
+      // Enable image-specific controls
+      elements.imageColorScaleSelect.disabled    = !isImage;
+      elements.imageColorBarScaleSelect.disabled = !isImage;
+      elements.imageInvertColorToggle.disabled   = !isImage;
+      elements.imageEqualAspectToggle.disabled   = !isImage;
+      elements.imageSliceAxisSelect.disabled   = !isImgSlice;
+      elements.imageSliceIndexInput.disabled   = !isImgSlice;
+      elements.imageWcsToggle.disabled         = !isImgSlice;
+      elements.imageYScaleSelect.disabled      = !isImgSlice;
+      elements.imageYInvertToggle.disabled     = !isImgSlice;
+      // Shared image/imgslice controls
+      elements.imageXLabelInput.disabled       = false;
+      elements.imageYLabelInput.disabled       = false;
+      elements.imageXInvertToggle.disabled     = false;
+      elements.imageYAxisInvertToggle.disabled = !isImage;
+      // WCS axes select: only in image mode when header has WCS keywords
+      const _hduForWcs = getSelectedHdu(tab);
+      const _wcsAvail  = Boolean(_hduForWcs && _hduForWcs.header &&
+        (extractWcs(_hduForWcs.header, 1) || extractWcs(_hduForWcs.header, 2)));
+      elements.imageAxesSelect.disabled = !isImage || !_wcsAvail;
+      // If WCS is unavailable, reset to pixel mode
+      if (!_wcsAvail) {
+        elements.imageAxesSelect.value = 'pixel';
+        tab.imageShowAxesWcs = false;
+      }
+      return;
+    }
 
     if (isHist) {
       // All X error controls are unconditionally disabled in hist modes
@@ -891,9 +1084,27 @@
       elements.histNBinsYInput.disabled        = !isHist2d;
       // Density scale is incompatible with KDE mode (contour handles it natively)
       elements.histDensityScaleSelect.disabled = !isHist2d || kdeOn;
+      // Color scale available for all hist2d modes
+      elements.histColorScaleSelect.disabled   = !isHist2d;
+      elements.histInvertColorToggle.disabled  = !isHist2d;
       // Marginals work in both regular and KDE mode
       elements.histMarginalToggle.disabled     = !isHist2d;
       elements.histKdeToggle.disabled          = false;
+      // Image controls disabled in hist modes
+      elements.imageColorScaleSelect.disabled    = true;
+      elements.imageColorBarScaleSelect.disabled = true;
+      elements.imageInvertColorToggle.disabled   = true;
+      elements.imageEqualAspectToggle.disabled   = true;
+      elements.imageSliceAxisSelect.disabled     = true;
+      elements.imageSliceIndexInput.disabled     = true;
+      elements.imageWcsToggle.disabled           = true;
+      elements.imageYScaleSelect.disabled        = true;
+      elements.imageYInvertToggle.disabled       = true;
+      elements.imageXLabelInput.disabled         = true;
+      elements.imageYLabelInput.disabled         = true;
+      elements.imageXInvertToggle.disabled       = true;
+      elements.imageYAxisInvertToggle.disabled   = true;
+      elements.imageAxesSelect.disabled          = true;
       return;
     }
 
@@ -913,13 +1124,41 @@
     elements.histNBinsInput.disabled         = true;
     elements.histNBinsYInput.disabled        = true;
     elements.histDensityScaleSelect.disabled = true;
+    elements.histColorScaleSelect.disabled   = true;
+    elements.histInvertColorToggle.disabled  = true;
     elements.histMarginalToggle.disabled     = true;
     elements.histKdeToggle.disabled          = true;
+    // Image controls disabled in scatter/step modes
+    elements.imageColorScaleSelect.disabled    = true;
+    elements.imageColorBarScaleSelect.disabled = true;
+    elements.imageInvertColorToggle.disabled   = true;
+    elements.imageEqualAspectToggle.disabled   = true;
+    elements.imageSliceAxisSelect.disabled     = true;
+    elements.imageSliceIndexInput.disabled     = true;
+    elements.imageWcsToggle.disabled           = true;
+    elements.imageYScaleSelect.disabled        = true;
+    elements.imageYInvertToggle.disabled       = true;
+    elements.imageXLabelInput.disabled         = true;
+    elements.imageYLabelInput.disabled         = true;
+    elements.imageXInvertToggle.disabled       = true;
+    elements.imageYAxisInvertToggle.disabled   = true;
+    elements.imageAxesSelect.disabled          = true;
   }
 
   // FIX #3: in scatter mode the Style sub-control disappears (handled via CSS
   //         .step-only / .controls.is-scatter .step-only { display: none })
   function updateErrorOptionControls(tab) {
+    // Image modes have no error controls at all
+    const isImageAny = tab.plotType === 'image' || tab.plotType === 'imgslice';
+    if (isImageAny) {
+      elements.yerrAsymToggle.disabled  = true;
+      elements.yerrSelect.disabled      = true;
+      elements.yerrLowerSelect.disabled = true;
+      elements.yerrUpperSelect.disabled = true;
+      elements.yerrTypeSelect.disabled  = true;
+      elements.yerrStyleSelect.disabled = true;
+      return;
+    }
     // Hist modes have no error controls at all
     const isHist = tab.plotType === 'hist1d' || tab.plotType === 'hist2d';
     if (isHist) {
@@ -985,6 +1224,17 @@
     tab.lastPlot    = null;
     tab.lastPlotKey = null;
     autoSelectColumns(tab);
+    // Auto-switch plot type based on HDU type
+    const hdu = getSelectedHdu(tab);
+    if (hdu && hdu._imageHdu) {
+      if (tab.plotType !== 'image' && tab.plotType !== 'imgslice') {
+        tab.plotType = 'image';
+      }
+    } else if (hdu && !hdu._imageHdu) {
+      if (tab.plotType === 'image' || tab.plotType === 'imgslice') {
+        tab.plotType = 'scatter';
+      }
+    }
     syncControlsForActiveTab();
     plotFromSelections(tab, { useCache: false });
   }
@@ -993,6 +1243,23 @@
     const tab = getActiveTab();
     if (!tab) return;
     const newType = elements.plotTypeSelect.value || 'scatter';
+
+    // When entering image modes, clear crosshair position (coordinate spaces differ)
+    if (newType === 'image' || newType === 'imgslice') {
+      if (tab.crosshair) { tab.crosshair.x = null; tab.crosshair.y = null; }
+      state.examineMode = false;
+      tab.plotType = newType;
+      updateScatterControls(tab);
+      updateErrorOptionControls(tab);
+      syncControlsForActiveTab();
+      plotFromSelections(tab, { useCache: false });
+      return;
+    }
+
+    // When leaving image modes, clear crosshair position (coordinate spaces differ)
+    if (tab.plotType === 'image' || tab.plotType === 'imgslice') {
+      if (tab.crosshair) { tab.crosshair.x = null; tab.crosshair.y = null; }
+    }
 
     // FIX #5: when leaving scatter, reset xerr so colour/state doesn't bleed through
     if (newType !== 'scatter') {
@@ -1089,6 +1356,8 @@
     tab.histNBins        = parseInt(elements.histNBinsInput.value,  10) || 50;
     tab.histNBinsY       = parseInt(elements.histNBinsYInput.value, 10) || 50;
     tab.histDensityScale = elements.histDensityScaleSelect.value || 'linear';
+    tab.histColorScale   = elements.histColorScaleSelect.value   || 'default';
+    tab.histInvertColor  = elements.histInvertColorToggle.checked;
     tab.histShowMarginal = elements.histMarginalToggle.checked;
     tab.histKde          = elements.histKdeToggle.checked;
     updateScatterControls(tab);
@@ -1106,6 +1375,35 @@
       };
     }
 
+    plotFromSelections(tab, { useCache: false });
+  }
+
+  function onImageOptionsChange() {
+    const tab = getActiveTab();
+    if (!tab) return;
+    tab.imageColorScale    = elements.imageColorScaleSelect.value    || 'Viridis';
+    tab.imageColorBarScale = elements.imageColorBarScaleSelect.value || 'linear';
+    tab.imageInvertColor   = elements.imageInvertColorToggle.checked;
+    tab.imageEqualAspect = elements.imageEqualAspectToggle.checked;
+    tab.imageSliceAxis   = elements.imageSliceAxisSelect.value   || 'x';
+    const newIdx = parseInt(elements.imageSliceIndexInput.value, 10);
+    tab.imageSliceIndex  = Number.isFinite(newIdx) && newIdx >= 0 ? newIdx : 0;
+    tab.imageShowWcs     = elements.imageWcsToggle.checked;
+    // New image-any controls
+    tab.customXLabel     = elements.imageXLabelInput.value;
+    tab.customYLabel     = elements.imageYLabelInput.value;
+    tab.invertX          = elements.imageXInvertToggle.checked;
+    tab.imageShowAxesWcs = elements.imageAxesSelect.value === 'wcs';
+    // Keep the table-mode label inputs in sync so they carry over when switching modes
+    elements.customXLabel.value = tab.customXLabel;
+    elements.customYLabel.value = tab.customYLabel;
+    // imgslice Y scale mirrors tab.yScale
+    if (tab.plotType === 'imgslice') {
+      tab.yScale  = elements.imageYScaleSelect.value || 'linear';
+      tab.invertY = elements.imageYInvertToggle.checked;
+    } else if (tab.plotType === 'image') {
+      tab.invertY = elements.imageYAxisInvertToggle.checked;
+    }
     plotFromSelections(tab, { useCache: false });
   }
 
@@ -1478,7 +1776,7 @@
   // FIX #6: never auto-select uncertainty columns – they default to None
   function autoSelectColumns(tab) {
     const hdu = getSelectedHdu(tab);
-    if (!hdu || !hdu.columns || !hdu.columns.length) {
+    if (!hdu || hdu._imageHdu || !hdu.columns || !hdu.columns.length) {
       tab.columns = { x: null, y: null, yerr: null, xerr: null,
                       yerrLower: null, yerrUpper: null, xerrLower: null, xerrUpper: null };
       return;
@@ -1520,6 +1818,88 @@
       if (tab._histBusy) { tab._histBusy = false; tab._pendingHistRange = null; }
       return;
     }
+
+    // ── Image HDU pipeline ───────────────────────────────────────────────────
+    const isImageMode    = tab.plotType === 'image';
+    const isImgSliceMode = tab.plotType === 'imgslice';
+    if (isImageMode || isImgSliceMode) {
+      const hdu = getSelectedHdu(tab);
+      if (!hdu || !hdu._imageHdu) {
+        setTabStatus(tab, 'error', 'Selected HDU is not a 2D image.');
+        clearPlot();
+        return;
+      }
+      const imagePlotKey = [
+        tab.selectedHduIndex,
+        tab.plotType,
+        isImageMode   ? tab.imageColorScale     : '',
+        isImageMode   ? (tab.imageColorBarScale || 'linear')    : '',
+        isImageMode   ? (tab.imageEqualAspect ? 'eq' : 'noeq') : '',
+        isImageMode   ? (tab.imageInvertColor  ? 'inv' : '')    : '',
+        isImageMode   ? (tab.invertX ? 'ix' : '')               : '',
+        isImageMode   ? (tab.invertY ? 'iy' : '')               : '',
+        isImageMode   ? (tab.imageShowAxesWcs ? 'wcs' : '')     : '',
+        isImgSliceMode ? tab.imageSliceAxis     : '',
+        isImgSliceMode ? tab.imageSliceIndex    : '',
+        isImgSliceMode ? (tab.imageShowWcs ? 'wcs' : '')        : '',
+        isImgSliceMode ? (tab.yScale || 'linear')               : '',
+        isImgSliceMode ? (tab.invertX ? 'ix' : '')              : '',
+        isImgSliceMode ? (tab.invertY ? 'iy' : '')              : '',
+        tab.customXLabel || '', tab.customYLabel || '', tab.customTitle || '',
+        state.darkMode ? 'dark' : 'light'
+      ].join('|');
+      if (options.useCache && tab.lastPlotKey === imagePlotKey && tab.lastPlot) {
+        renderPlot(tab, tab.lastPlot);
+        return;
+      }
+      const token = ++tab.plotToken;
+      setTabStatus(tab, 'info', 'Loading image data…');
+      try {
+        const imageData = await getImageData(tab, hdu);
+        if (token !== tab.plotToken) return;
+        const plotSpec = isImageMode
+          ? buildImageSpec(tab, imageData, hdu)
+          : buildImageSliceSpec(tab, imageData, hdu);
+        if (!plotSpec) {
+          setTabStatus(tab, 'warn', 'Could not build image plot.');
+          tab.lastSeries = null; clearPlot(); return;
+        }
+        tab.lastPlotKey = imagePlotKey;
+        tab.lastPlot    = plotSpec;
+        if (isImageMode) {
+          tab.lastSeries = {
+            x: [], y: [], xLower: null, xUpper: null, yLower: null, yUpper: null,
+            yerrPlus: null, yerrMinus: null, xerrPlus: null, xerrMinus: null,
+            validYerr: 0, dropped: 0, droppedYerr: 0, origIndices: null,
+            _imageMode: true, _isImageHeatmap: true,
+            _naxis1: imageData.naxis1, _naxis2: imageData.naxis2,
+            _xRange: plotSpec._imageXRange || [-0.5, imageData.naxis1 - 0.5],
+            _yRange: plotSpec._imageYRange || [-0.5, imageData.naxis2 - 0.5]
+          };
+          delete plotSpec._imageXRange;
+          delete plotSpec._imageYRange;
+        } else {
+          // imgslice — store x/y for auto-scale buttons
+          tab.lastSeries = plotSpec._sliceSeries || {
+            x: [], y: [], xLower: null, xUpper: null, yLower: null, yUpper: null,
+            yerrPlus: null, yerrMinus: null, xerrPlus: null, xerrMinus: null,
+            validYerr: 0, dropped: 0, droppedYerr: 0, origIndices: null,
+            _imageMode: true, _isImageHeatmap: false
+          };
+          delete plotSpec._sliceSeries;  // clean up the private field
+        }
+        renderPlot(tab, plotSpec);
+        syncPlotControls(tab);
+        setTabStatus(tab, 'ok', `Image: ${imageData.naxis1}×${imageData.naxis2} pixels.`);
+      } catch (err) {
+        if (token !== tab.plotToken) return;
+        setTabStatus(tab, 'error', 'Failed to load image data.');
+        tab.lastSeries = null; clearPlot();
+      }
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const isHist1d = tab.plotType === 'hist1d';
     const isHist2d = tab.plotType === 'hist2d';
     const isHist   = isHist1d || isHist2d;
@@ -1562,6 +1942,8 @@
       isHist ? (tab.histNBins || 50) : '',
       isHist2d ? (tab.histNBinsY || 50) : '',
       isHist2d ? (tab.histDensityScale || 'linear') : '',
+      isHist2d ? (tab.histColorScale   || 'default') : '',
+      isHist2d ? (tab.histInvertColor  ? 'hinv' : '') : '',
       isHist2d ? (tab.histShowMarginal ? 'marg' : '') : '',
       isHist ? (tab.histKde ? 'kde' : '') : '',
       tab.customXLabel || '',
@@ -2218,12 +2600,16 @@
     if (!isRangeChange) return;
     pushViewState(tab);
     // Refresh tick labels for custom-scale axes after a pan/zoom
-    const fl = elements.plot._fullLayout;
-    if (fl) {
-      updateCustomScaleTicks(tab,
-        fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null,
-        fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null
-      );
+    // (Not needed for image heatmap — both axes are always linear there)
+    const isImgHeatmap = Boolean(tab.lastSeries && tab.lastSeries._isImageHeatmap);
+    if (!isImgHeatmap) {
+      const fl = elements.plot._fullLayout;
+      if (fl) {
+        updateCustomScaleTicks(tab,
+          fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null,
+          fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null
+        );
+      }
     }
   }
 
@@ -2431,29 +2817,32 @@
   }
 
   function syncPlotControls(tab) {
-    const hasSeries      = Boolean(tab && tab.lastSeries && tab.lastSeries.x && tab.lastSeries.x.length);
-    const isHistMode     = Boolean(tab && tab.lastSeries && tab.lastSeries._histMode);
+    const _lastSeries    = tab && tab.lastSeries;
+    const hasSeries      = Boolean(_lastSeries && _lastSeries.x !== undefined &&
+                             (_lastSeries._isImageHeatmap || (_lastSeries.x && _lastSeries.x.length)));
+    const isHistMode     = Boolean(_lastSeries && _lastSeries._histMode);
     const isHist1d       = Boolean(tab && tab.lastSeries && tab.lastSeries._hist1d);
     // hasYData: y values are available for range calculations.
     // True for scatter/step (y always stored) and hist2d (stored since fix).
     // False for hist1d (count axis — rangemode:'tozero' handles it automatically).
-    const hasYData       = Boolean(hasSeries && tab && tab.lastSeries.y && tab.lastSeries.y.length);
-    const hasYerr        = Boolean(hasSeries && !isHistMode && tab && tab.lastSeries.yLower && tab.lastSeries.validYerr > 0);
-    const hasXerr        = Boolean(hasSeries && !isHistMode && tab && tab.lastSeries.xLower);
+    const isImageHeatmap  = Boolean(_lastSeries && _lastSeries._isImageHeatmap);
+    const isImageMode2    = Boolean(_lastSeries && _lastSeries._imageMode);
+    const hasYData       = Boolean(hasSeries && !isImageHeatmap && tab && tab.lastSeries.y && tab.lastSeries.y.length);
+    const hasYerr        = Boolean(hasSeries && !isHistMode && !isImageMode2 && tab && tab.lastSeries.yLower && tab.lastSeries.validYerr > 0);
+    const hasXerr        = Boolean(hasSeries && !isHistMode && !isImageMode2 && tab && tab.lastSeries.xLower);
     const crosshairActive = Boolean(tab && tab.crosshair && tab.crosshair.enabled);
-    // X buttons: always work when there is any series (hist always has x data).
-    // Y buttons: need y data — hist2d and scatter/step have it; hist1d uses
-    //   Plotly's internal count axis so Auto Y/XY just resets to autorange.
-    // ±Err buttons: only when actual error columns exist (never for hist).
-    elements.autoscaleXYBtn.disabled    = !(hasSeries && (hasYData || isHist1d));
+    // X buttons: always work when there is any series.
+    // Y buttons: need y data — hist2d, scatter/step, imgslice have it; image heatmap and hist1d use autorange.
+    // ±Err buttons: only when actual error columns exist (never for hist or image).
+    elements.autoscaleXYBtn.disabled    = !(hasSeries && (hasYData || isHist1d || isImageHeatmap));
     elements.autoscaleXYErrBtn.disabled = !(hasYerr || hasXerr);
     elements.floorXYBtn.disabled        = !(hasSeries && hasYData);
     elements.autoscaleXBtn.disabled     = !hasSeries;
     elements.autoscaleXErrBtn.disabled  = !hasXerr;
-    elements.floorXBtn.disabled         = !hasSeries;
-    elements.autoscaleYBtn.disabled     = !(hasYData || isHist1d);
+    elements.floorXBtn.disabled         = !(hasSeries && !isImageHeatmap);
+    elements.autoscaleYBtn.disabled     = !(hasYData || isHist1d || isImageHeatmap);
     elements.autoscaleYErrBtn.disabled  = !hasYerr;
-    elements.floorYBtn.disabled         = !hasYData;
+    elements.floorYBtn.disabled         = !(hasYData && !isImageHeatmap);
     elements.zoomModeBtn.disabled       = !hasSeries;
     elements.panModeBtn.disabled        = !hasSeries;
     elements.zoomInBtn.disabled         = !hasSeries;
@@ -2471,8 +2860,9 @@
     elements.crosshairToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
     updateCrosshairReadout(tab);
 
-    // Examine buttons — disabled for histogram modes (no meaningful point selection)
-    const examineAvailable = hasSeries && !isHistMode;
+    // Examine buttons — disabled for histogram and image modes
+    const isImageMode     = Boolean(tab && tab.lastSeries && tab.lastSeries._imageMode);
+    const examineAvailable = hasSeries && !isHistMode && !isImageMode;
     const nSelected        = tab.selectedIndices ? tab.selectedIndices.size : 0;
     elements.examineToggle.disabled   = !examineAvailable;
     elements.selectAllBtn.disabled    = !examineAvailable;
@@ -2535,32 +2925,48 @@
 
   function onZoomIn() {
     if (!window.Plotly) return;
-    const fl = elements.plot && elements.plot._fullLayout;
+    const tab = getActiveTab();
+    const fl  = elements.plot && elements.plot._fullLayout;
     if (!fl || !fl.xaxis || !fl.yaxis) return;
     const xa = fl.xaxis, ya = fl.yaxis;
     const xc = (xa.range[0] + xa.range[1]) / 2;
-    const yc = (ya.range[0] + ya.range[1]) / 2;
     const xh = (xa.range[1] - xa.range[0]) / 2 * 0.5;
-    const yh = (ya.range[1] - ya.range[0]) / 2 * 0.5;
-    window.Plotly.relayout(elements.plot, {
-      'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh],
-      'yaxis.autorange': false, 'yaxis.range': [yc - yh, yc + yh]
-    });
+    // In equal-aspect image mode, only set x range and let scaleanchor adjust y
+    if (tab && tab.lastSeries && tab.lastSeries._isImageHeatmap && tab.imageEqualAspect !== false) {
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh]
+      });
+    } else {
+      const yc = (ya.range[0] + ya.range[1]) / 2;
+      const yh = (ya.range[1] - ya.range[0]) / 2 * 0.5;
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh],
+        'yaxis.autorange': false, 'yaxis.range': [yc - yh, yc + yh]
+      });
+    }
   }
 
   function onZoomOut() {
     if (!window.Plotly) return;
-    const fl = elements.plot && elements.plot._fullLayout;
+    const tab = getActiveTab();
+    const fl  = elements.plot && elements.plot._fullLayout;
     if (!fl || !fl.xaxis || !fl.yaxis) return;
     const xa = fl.xaxis, ya = fl.yaxis;
     const xc = (xa.range[0] + xa.range[1]) / 2;
-    const yc = (ya.range[0] + ya.range[1]) / 2;
     const xh = (xa.range[1] - xa.range[0]) / 2 * 2;
-    const yh = (ya.range[1] - ya.range[0]) / 2 * 2;
-    window.Plotly.relayout(elements.plot, {
-      'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh],
-      'yaxis.autorange': false, 'yaxis.range': [yc - yh, yc + yh]
-    });
+    // In equal-aspect image mode, only set x range and let scaleanchor adjust y
+    if (tab && tab.lastSeries && tab.lastSeries._isImageHeatmap && tab.imageEqualAspect !== false) {
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh]
+      });
+    } else {
+      const yc = (ya.range[0] + ya.range[1]) / 2;
+      const yh = (ya.range[1] - ya.range[0]) / 2 * 2;
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': false, 'xaxis.range': [xc - xh, xc + xh],
+        'yaxis.autorange': false, 'yaxis.range': [yc - yh, yc + yh]
+      });
+    }
   }
 
   function onSaveImage() {
@@ -2624,6 +3030,18 @@
 
   function autoscaleAxes(tab, includeXErr, includeYErr) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
+    // Image heatmap: auto-scale to show the full image extent
+    if (tab.lastSeries._isImageHeatmap) {
+      const n1   = tab.lastSeries._naxis1 || 0;
+      const n2   = tab.lastSeries._naxis2 || 0;
+      const xR   = tab.lastSeries._xRange || [-0.5, n1 - 0.5];
+      const yR   = tab.lastSeries._yRange || [-0.5, n2 - 0.5];
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': false, 'xaxis.range': xR,
+        'yaxis.autorange': false, 'yaxis.range': yR
+      });
+      return;
+    }
     const xRange = invertRange(computeXRange(tab.lastSeries, includeXErr, tab.xScale), tab.invertX);
     const update = {};
     if (xRange) { update['xaxis.autorange'] = false; update['xaxis.range'] = xRange; }
@@ -2639,6 +3057,12 @@
 
   function autoscaleXAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
+    if (tab.lastSeries._isImageHeatmap) {
+      const n1 = tab.lastSeries._naxis1 || 0;
+      const xR = tab.lastSeries._xRange || [-0.5, n1 - 0.5];
+      window.Plotly.relayout(elements.plot, { 'xaxis.autorange': false, 'xaxis.range': xR });
+      return;
+    }
     const range = invertRange(computeXRange(tab.lastSeries, includeError, tab.xScale), tab.invertX);
     if (!range) return;
     window.Plotly.relayout(elements.plot, { 'xaxis.autorange': false, 'xaxis.range': range });
@@ -2646,6 +3070,12 @@
 
   function autoscaleYAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
+    if (tab.lastSeries._isImageHeatmap) {
+      const n2 = tab.lastSeries._naxis2 || 0;
+      const yR = tab.lastSeries._yRange || [-0.5, n2 - 0.5];
+      window.Plotly.relayout(elements.plot, { 'yaxis.autorange': false, 'yaxis.range': yR });
+      return;
+    }
     if (tab.lastSeries._hist1d) {
       // Hist1d y-axis is Plotly-managed counts/density — reset to autorange.
       window.Plotly.relayout(elements.plot, { 'yaxis.autorange': true });
@@ -3595,17 +4025,21 @@
       const sigma    = Math.max(1, Math.min(3, nBinsX / 25));
       const zBlurred = gaussianBlur2d(hist.z, sigma);
 
-      // Fully opaque colorscale: start at the plot-background colour so that
-      // empty/low-density areas blend naturally into the background, and the
-      // colorbar itself renders a clean gradient without transparency artefacts.
-      //
-      // Intermediate stop is linearly interpolated between background and accent
-      // at t=0.35 so the gradient isn't too abrupt.
-      //   dark  bg=(7,8,14)      → mid=(26,75,77)  → #3ec8c2
-      //   light bg=(255,255,255) → mid=(169,204,204)→ #0a6f6d
-      const colorscale = state.darkMode
+      // Colorscale: named user selection, or theme-aware teal gradient as default.
+      // The default gradient starts at the plot-background colour so empty areas
+      // blend naturally into the background.
+      //   dark  bg=(7,8,14) → mid=(26,75,77) → #3ec8c2
+      //   light bg=(255,255,255) → mid=(169,204,204) → #0a6f6d
+      const userCs  = tab.histColorScale || 'default';
+      const invert  = Boolean(tab.histInvertColor);
+      const tealCs  = state.darkMode
         ? [[0, '#07080e'], [0.35, '#1a4b4d'], [1, '#3ec8c2']]
         : [[0, '#ffffff'], [0.35, '#a9cccc'], [1, '#0a6f6d']];
+      const defaultCs = invert
+        ? tealCs.map(([t, c]) => [1 - t, c]).sort((a, b) => a[0] - b[0])
+        : tealCs;
+      const colorscale   = userCs === 'default' ? defaultCs : userCs;
+      const reversescale = userCs !== 'default' ? invert : false;
 
       const contourTrace = {
         x: useLogX ? hist.rawXCenters : hist.xCenters,
@@ -3613,6 +4047,7 @@
         z: zBlurred,
         type: 'contour',
         colorscale,
+        reversescale,
         showscale: true,
         colorbar: buildHist2dColorbar('Density', theme),
         ncontours: 12,
@@ -3686,11 +4121,19 @@
       }
 
       const colorscaleLabel = densityScale !== 'linear' ? `${densityScale}(Count)` : 'Count';
-      // Light mode: white (empty) → black (dense).
-      // Dark mode: reversed so empty cells blend into the dark background and
-      // dense cells appear white/bright rather than vanishing.
-      const colorscale  = [[0, '#ffffff'], [1, '#000000']];
-      const reversescale = state.darkMode;
+      // Colorscale: named user selection, or theme-aware teal gradient as default.
+      // The default gradient starts at the background colour so empty bins blend
+      // naturally into the background (same teal palette as KDE mode).
+      const userCs2   = tab.histColorScale || 'default';
+      const invert2   = Boolean(tab.histInvertColor);
+      const tealCs2   = state.darkMode
+        ? [[0, '#07080e'], [0.35, '#1a4b4d'], [1, '#3ec8c2']]
+        : [[0, '#ffffff'], [0.35, '#a9cccc'], [1, '#0a6f6d']];
+      const defaultCs2 = invert2
+        ? tealCs2.map(([t, c]) => [1 - t, c]).sort((a, b) => a[0] - b[0])
+        : tealCs2;
+      const colorscale   = userCs2 === 'default' ? defaultCs2 : userCs2;
+      const reversescale = userCs2 !== 'default' ? invert2 : false;
 
       const heatmapTrace = {
         x: useLogX ? hist.rawXCenters : hist.xCenters,
@@ -3807,6 +4250,444 @@
 
     const config = { responsive: true, displaylogo: false, displayModeBar: false };
     return { data: traces, layout, config };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image HDU helpers
+  // ---------------------------------------------------------------------------
+
+  // Read and decode the pixel array for a 2D image HDU (NAXIS=2, frame 0).
+  // Returns a Promise that resolves to { pixels: Float32Array, naxis1, naxis2 }.
+  //
+  // We bypass fitsjs's getFrame() / Web Worker pipeline entirely.
+  // getFrame uses a dynamically-constructed Web Worker with importScripts on a
+  // blob URL — this fails silently (worker.onerror is not set) in many browsers
+  // and never fires the callback.  Instead we read the raw pixel blob directly
+  // with FileReader and decode the big-endian FITS bytes ourselves via DataView.
+  // Caches the result in tab.imageCache keyed by hdu.index.
+  function getImageData(tab, hdu) {
+    const key = String(hdu.index);
+    if (tab.imageCache && tab.imageCache[key]) {
+      return Promise.resolve(tab.imageCache[key]);
+    }
+
+    const dataUnit = hdu.dataUnit;
+    const header   = hdu.header;
+    const bitpix   = header && typeof header.get === 'function' ? header.get('BITPIX') : null;
+    const bzeroRaw  = header && typeof header.get === 'function' ? header.get('BZERO')  : null;
+    const bscaleRaw = header && typeof header.get === 'function' ? header.get('BSCALE') : null;
+    const bzero  = Number.isFinite(bzeroRaw)  ? bzeroRaw  : 0;
+    const bscale = Number.isFinite(bscaleRaw) ? bscaleRaw : 1;
+
+    if (!Number.isFinite(bitpix)) {
+      return Promise.reject(new Error('Missing or invalid BITPIX'));
+    }
+
+    // Decode a raw ArrayBuffer of FITS big-endian pixels into a Float32Array.
+    function decodeBuffer(buffer) {
+      const naxis1 = hdu.naxis1, naxis2 = hdu.naxis2;
+      const nPixels       = naxis1 * naxis2;
+      const bytesPerPixel = Math.abs(bitpix) / 8;
+      const dv            = new DataView(buffer);
+      const pixels        = new Float32Array(nPixels);
+      // Only decode as many pixels as the buffer actually contains
+      const maxPx         = Math.min(nPixels, Math.floor(buffer.byteLength / bytesPerPixel));
+      const noTransform   = (bzero === 0 && bscale === 1);
+
+      for (let i = 0; i < maxPx; i++) {
+        const off = i * bytesPerPixel;
+        let v;
+        // DataView reads big-endian when littleEndian arg is false (the default)
+        switch (bitpix) {
+          case   8: v = dv.getUint8(off);          break;  // unsigned byte
+          case  16: v = dv.getInt16(off, false);   break;  // big-endian int16
+          case  32: v = dv.getInt32(off, false);   break;  // big-endian int32
+          case  64: {                                       // big-endian int64 (approx)
+            const hi = dv.getInt32(off, false);
+            const lo = dv.getUint32(off + 4, false);
+            v = hi * 4294967296 + lo;
+            break;
+          }
+          case -32: v = dv.getFloat32(off, false); break;  // big-endian float32
+          case -64: v = dv.getFloat64(off, false); break;  // big-endian float64
+          default:  v = 0;
+        }
+        pixels[i] = noTransform ? v : bzero + bscale * v;
+      }
+
+      const data = { pixels, naxis1, naxis2 };
+      if (!tab.imageCache) tab.imageCache = {};
+      tab.imageCache[key] = data;
+      return data;
+    }
+
+    // Fast path: buffer already loaded (XHR / URL-based FITS)
+    if (dataUnit.buffer instanceof ArrayBuffer) {
+      try {
+        return Promise.resolve(decodeBuffer(dataUnit.buffer));
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+
+    // Blob path: FITS loaded from a local File — read the pixel blob once
+    if (dataUnit.blob instanceof Blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = (e) => {
+          try { resolve(decodeBuffer(e.target.result)); }
+          catch (err) { reject(err); }
+        };
+        reader.onerror = () => reject(new Error('FileReader error reading image pixels'));
+        reader.readAsArrayBuffer(dataUnit.blob);
+      });
+    }
+
+    return Promise.reject(new Error('Image dataUnit has no buffer or blob'));
+  }
+
+  // Extract simple linear WCS info for one axis (axisNum = 1 or 2).
+  // Returns { crpix, crval, cdelt, ctype } or null if not present.
+  function extractWcs(header, axisNum) {
+    if (!header || typeof header.get !== 'function') return null;
+    const crpix = header.get('CRPIX' + axisNum);
+    const crval = header.get('CRVAL' + axisNum);
+    const cdelt = header.get('CDELT' + axisNum);
+    const ctype = header.get('CTYPE' + axisNum);
+    if (!Number.isFinite(crpix) || !Number.isFinite(crval) || !Number.isFinite(cdelt)) return null;
+    return { crpix, crval, cdelt, ctype: typeof ctype === 'string' ? ctype.trim() : null };
+  }
+
+  // Convert a 0-based pixel index to a world coordinate using simple linear WCS.
+  function pixelToWcs(pixelIdx, wcs) {
+    return wcs.crval + wcs.cdelt * (pixelIdx - (wcs.crpix - 1));
+  }
+
+  // Build a Plotly spec for "Image" mode (2D heatmap).
+  // FITS convention: pixel (0,0) is the lower-left corner; row 0 in the data
+  // corresponds to y=0 (the bottom row). Plotly heatmap with ascending y-axis
+  // displays z[0] at y=0, which correctly places row 0 at the bottom.
+  function buildImageSpec(tab, imageData, hdu) {
+    const { pixels, naxis1, naxis2 } = imageData;
+    const theme = getThemeColors();
+
+    // Apply pixel stretch (linear/sqrt/log/asinh) by normalising to [0,1] first.
+    // stretchPmin/stretchPmax are exposed outside the block so colorbar ticks can
+    // be mapped back to original pixel values.
+    const stretch = tab.imageColorBarScale || 'linear';
+    let zPixels = pixels;
+    let stretchPmin = null, stretchPmax = null;
+    if (stretch !== 'linear') {
+      let pmin = Infinity, pmax = -Infinity;
+      for (let i = 0; i < pixels.length; i++) {
+        const v = pixels[i];
+        if (Number.isFinite(v)) { if (v < pmin) pmin = v; if (v > pmax) pmax = v; }
+      }
+      if (Number.isFinite(pmin) && Number.isFinite(pmax) && pmax > pmin) {
+        stretchPmin = pmin;
+        stretchPmax = pmax;
+        const range = pmax - pmin;
+        zPixels = new Float32Array(pixels.length);
+        for (let i = 0; i < pixels.length; i++) {
+          const v = pixels[i];
+          if (!Number.isFinite(v)) { zPixels[i] = NaN; continue; }
+          const t = Math.max(0, (v - pmin) / range);
+          switch (stretch) {
+            case 'sqrt':  zPixels[i] = Math.sqrt(t); break;
+            case 'log':   zPixels[i] = Math.log10(1 + 9 * t); break;
+            case 'asinh': zPixels[i] = Math.asinh(10 * t) / Math.asinh(10); break;
+            default:      zPixels[i] = t;
+          }
+        }
+      }
+    }
+
+    // Build 2D z array from stretched pixels, plus a customdata array of original
+    // pixel values so hover always shows the pre-stretch value regardless of stretch mode.
+    // Use subarray() on TypedArrays for zero-copy row views (avoids O(N) boxing).
+    // stretchPmin !== null means the transform was actually applied (range > 0).
+    const isTypedZ = ArrayBuffer.isView(zPixels) && !(zPixels instanceof DataView);
+    const isTypedP = ArrayBuffer.isView(pixels)  && !(pixels  instanceof DataView);
+    const z = [];
+    const needCustomdata = (stretchPmin !== null);
+    const customdata = needCustomdata ? [] : null;
+    for (let row = 0; row < naxis2; row++) {
+      const base = row * naxis1;
+      z.push(isTypedZ ? zPixels.subarray(base, base + naxis1) : zPixels.slice(base, base + naxis1));
+      if (needCustomdata) {
+        customdata.push(isTypedP ? pixels.subarray(base, base + naxis1) : pixels.slice(base, base + naxis1));
+      }
+    }
+
+    // Colorbar tick remapping: when a stretch is applied the z values are in [0,1]
+    // normalised space, so the default tick labels are meaningless.  Compute 6 evenly-
+    // spaced original-pixel-value ticks, forward-transform each to its position in
+    // stretched space (tickvals), and label them with the original values (ticktext).
+    let stretchTickvals, stretchTicktext;
+    if (stretchPmin !== null) {
+      const nTicks  = 6;
+      const prange  = stretchPmax - stretchPmin;
+      stretchTickvals = [];
+      stretchTicktext = [];
+      for (let i = 0; i < nTicks; i++) {
+        const t      = i / (nTicks - 1);              // linear fraction in original space
+        const origV  = stretchPmin + t * prange;       // original pixel value
+        let sv;
+        switch (stretch) {
+          case 'sqrt':  sv = Math.sqrt(t); break;
+          case 'log':   sv = Math.log10(1 + 9 * t); break;
+          case 'asinh': sv = Math.asinh(10 * t) / Math.asinh(10); break;
+          default:      sv = t;
+        }
+        stretchTickvals.push(sv);
+        // Format: fixed notation for values in [0.001, 1e6), scientific otherwise
+        const absV = Math.abs(origV);
+        stretchTicktext.push(
+          absV === 0       ? '0' :
+          absV < 0.001 || absV >= 1e6 ? origV.toExponential(3) :
+          parseFloat(origV.toPrecision(4)).toString()
+        );
+      }
+    }
+
+    // WCS extraction
+    const wcsX = hdu && hdu.header ? extractWcs(hdu.header, 1) : null;
+    const wcsY = hdu && hdu.header ? extractWcs(hdu.header, 2) : null;
+
+    const invertX      = Boolean(tab.invertX);
+    const invertY      = Boolean(tab.invertY);
+    const showAxesWcs  = Boolean(tab.imageShowAxesWcs) && Boolean(wcsX) && Boolean(wcsY);
+    const colorscale   = tab.imageColorScale  || 'Viridis';
+    const reversescale = Boolean(tab.imageInvertColor);
+    const equalAspect  = tab.imageEqualAspect !== false;
+
+    // Axis labels
+    const xLabel = (tab.customXLabel || '').trim() ||
+      (showAxesWcs && wcsX.ctype ? wcsX.ctype : (wcsX && wcsX.ctype ? wcsX.ctype : 'X (pixels)'));
+    const yLabel = (tab.customYLabel || '').trim() ||
+      (showAxesWcs && wcsY.ctype ? wcsY.ctype : (wcsY && wcsY.ctype ? wcsY.ctype : 'Y (pixels)'));
+
+    // Compute axis ranges and optional explicit x/y coordinate arrays
+    let xRange, yRange;
+    let traceX, traceY;
+    if (showAxesWcs) {
+      // Generate explicit x/y arrays so the heatmap uses WCS coordinates on its axes
+      traceX = [];
+      for (let col = 0; col < naxis1; col++) traceX.push(pixelToWcs(col, wcsX));
+      traceY = [];
+      for (let row = 0; row < naxis2; row++) traceY.push(pixelToWcs(row, wcsY));
+      // Half-cell padding in WCS units (edge of first/last pixel)
+      const xLeft  = pixelToWcs(-0.5, wcsX);
+      const xRight = pixelToWcs(naxis1 - 0.5, wcsX);
+      const yBot   = pixelToWcs(-0.5, wcsY);
+      const yTop   = pixelToWcs(naxis2 - 0.5, wcsY);
+      xRange = invertX ? [xRight, xLeft] : [xLeft, xRight];
+      yRange = invertY ? [yTop,   yBot]  : [yBot,  yTop];
+    } else {
+      // Pixel mode: straightforward pixel-index ranges
+      xRange = invertX ? [naxis1 - 0.5, -0.5] : [-0.5, naxis1 - 0.5];
+      yRange = invertY ? [naxis2 - 0.5, -0.5] : [-0.5, naxis2 - 0.5];
+    }
+
+    const trace = {
+      z,
+      ...(traceX ? { x: traceX } : {}),
+      ...(traceY ? { y: traceY } : {}),
+      ...(customdata ? { customdata } : {}),
+      type: 'heatmap',
+      colorscale,
+      reversescale,
+      showscale: true,
+      colorbar: {
+        thickness: 14,
+        tickfont: { size: 12, color: theme.fontColor },
+        tickcolor: theme.axisColor,
+        outlinewidth: 0,
+        bgcolor: state.darkMode ? '#07080e' : '#ffffff',
+        // When a stretch is applied, remap tick positions (tickvals in [0,1] stretched
+        // space) and labels (ticktext in original pixel values) so the colorbar legend
+        // always reads in the original data units.
+        ...(stretchTickvals ? { tickmode: 'array', tickvals: stretchTickvals, ticktext: stretchTicktext } : {})
+      },
+      // When a stretch is active, z holds normalised [0,1] values used only for
+      // colour mapping.  Show the original pixel value from customdata instead.
+      hovertemplate: customdata
+        ? `x: %{x}<br>y: %{y}<br>value: %{customdata:.4g}<extra></extra>`
+        : `x: %{x}<br>y: %{y}<br>value: %{z:.4g}<extra></extra>`,
+      xgap: 0, ygap: 0
+    };
+
+    // uirevision: rebuild when equalAspect, invert, or WCS mode changes
+    const uirevision = `${tab.id}-image-${equalAspect ? 'eq' : 'noeq'}` +
+      `-${invertX ? 'ix' : ''}-${invertY ? 'iy' : ''}-${showAxesWcs ? 'wcs' : ''}`;
+
+    const layout = {
+      uirevision,
+      title: { text: (tab.customTitle || '').trim() || tab.name, font: { size: 20, color: theme.fontColor } },
+      margin: { l: 64, r: 80, t: 52, b: 56 },
+      paper_bgcolor: theme.paperBg,
+      plot_bgcolor:  theme.plotBg,
+      font: { size: 13, color: theme.fontColor, family: '"Space Grotesk", sans-serif' },
+      xaxis: {
+        title: { text: xLabel, font: { size: 14 } },
+        gridcolor: theme.gridColor, linecolor: theme.gridColor,
+        tickcolor: theme.axisColor, color: theme.axisColor,
+        tickfont: { size: 13 },
+        zeroline: false,
+        range: xRange,
+        autorange: false
+      },
+      yaxis: {
+        title: { text: yLabel, font: { size: 14 } },
+        gridcolor: theme.gridColor, linecolor: theme.gridColor,
+        tickcolor: theme.axisColor, color: theme.axisColor,
+        tickfont: { size: 13 },
+        zeroline: false,
+        range: yRange,
+        autorange: false,
+        ...(equalAspect ? { scaleanchor: 'x', scaleratio: 1 } : {})
+      },
+      showlegend: false,
+      dragmode: state.dragMode,
+      shapes: [], annotations: []
+    };
+
+    const config = { responsive: true, displaylogo: false, displayModeBar: false };
+    // Attach axis ranges so plotFromSelections can store them in lastSeries for autoscale
+    const spec = { data: [trace], layout, config };
+    spec._imageXRange = xRange;
+    spec._imageYRange = yRange;
+    return spec;
+  }
+
+  // Build a Plotly spec for "Series" (imgslice) mode: a 1D slice through the image.
+  // Attaches the slice x/y arrays on the spec as ._sliceSeries for lastSeries storage.
+  function buildImageSliceSpec(tab, imageData, hdu) {
+    const { pixels, naxis1, naxis2 } = imageData;
+    const theme      = getThemeColors();
+    const sliceAxis  = tab.imageSliceAxis  || 'x';  // 'x' = vary x (fix y row); 'y' = vary y (fix x col)
+    const sliceIdx   = tab.imageSliceIndex || 0;
+    const showWcs    = Boolean(tab.imageShowWcs);
+    const yScale     = tab.yScale || 'linear';
+    const invertX    = Boolean(tab.invertX);
+    const invertY    = Boolean(tab.invertY);
+
+    // Extract a 1D array of pixel values and coordinate values
+    const pixelValues = [];
+    const pixelCoords = [];
+
+    if (sliceAxis === 'x') {
+      // Show X axis: fix Y row, vary X column
+      const row = Math.min(Math.max(0, Math.floor(sliceIdx)), naxis2 - 1);
+      const base = row * naxis1;
+      for (let col = 0; col < naxis1; col++) {
+        pixelCoords.push(col);
+        pixelValues.push(pixels[base + col]);
+      }
+    } else {
+      // Show Y axis: fix X column, vary Y row
+      const col = Math.min(Math.max(0, Math.floor(sliceIdx)), naxis1 - 1);
+      for (let row = 0; row < naxis2; row++) {
+        pixelCoords.push(row);
+        pixelValues.push(pixels[row * naxis1 + col]);
+      }
+    }
+
+    // Optionally convert pixel coords to WCS world coords
+    const header = hdu && hdu.header;
+    const axisNum = sliceAxis === 'x' ? 1 : 2;
+    const wcs  = (showWcs && header) ? extractWcs(header, axisNum) : null;
+    const xVals = wcs
+      ? pixelCoords.map((p) => pixelToWcs(p, wcs))
+      : pixelCoords;
+
+    // X-axis label
+    let xLabel = (tab.customXLabel || '').trim();
+    if (!xLabel) {
+      xLabel = wcs && wcs.ctype ? wcs.ctype : (sliceAxis === 'x' ? 'X (pixels)' : 'Y (pixels)');
+    }
+    // Y-axis label
+    const yLabel = (tab.customYLabel || '').trim() || 'Pixel Value';
+
+    // Apply Y scale transformation
+    const yExpOffset = yScale === 'exp' ? computeExpOffset(pixelValues) : 0;
+    tab._lastXExpOffset = 0;
+    tab._lastYExpOffset = yExpOffset;
+    const yScaled = prepareAxisValues(pixelValues, yScale, yExpOffset);
+
+    // Filter out non-finite points
+    const x = [], y = [], rawY = [];
+    for (let i = 0; i < xVals.length; i++) {
+      if (Number.isFinite(xVals[i]) && Number.isFinite(yScaled[i])) {
+        x.push(xVals[i]);
+        y.push(yScaled[i]);
+        rawY.push(pixelValues[i]);
+      }
+    }
+    if (!x.length) return null;
+
+    const showTicks = x.length <= 20000;
+    const yRange0   = arrayRange(y);
+
+    const trace = {
+      x, y,
+      type: 'scatter',
+      mode: 'lines',
+      line: { color: theme.lineColor, width: 2, shape: 'hvh' }
+    };
+
+    const traces = [trace];
+    if (showTicks) {
+      traces.push({
+        x, y,
+        type: 'scatter', mode: 'markers',
+        marker: { symbol: 'circle', size: 5, color: theme.tickMarkerColor, line: { width: 0 } },
+        hoverinfo: 'skip', showlegend: false
+      });
+    }
+
+    const layout = {
+      uirevision: `${tab.id}-imgslice-${sliceAxis}-${sliceIdx}-${invertX ? 'ix' : ''}-${invertY ? 'iy' : ''}`,
+      title: { text: (tab.customTitle || '').trim() || tab.name, font: { size: 20, color: theme.fontColor } },
+      margin: { l: 64, r: 24, t: 52, b: 56 },
+      paper_bgcolor: theme.paperBg,
+      plot_bgcolor:  theme.plotBg,
+      font: { size: 13, color: theme.fontColor, family: '"Space Grotesk", sans-serif' },
+      xaxis: {
+        title: { text: xLabel, font: { size: 14 } },
+        gridcolor: theme.gridColor, linecolor: theme.gridColor,
+        tickcolor: theme.axisColor, color: theme.axisColor,
+        tickfont: { size: 13 }, zeroline: false, type: 'linear',
+        autorange: invertX ? 'reversed' : true,
+        ...buildAxisFormat('linear')
+      },
+      yaxis: {
+        title: { text: yLabel, font: { size: 14 } },
+        gridcolor: theme.gridColor, linecolor: theme.gridColor,
+        tickcolor: theme.axisColor, color: theme.axisColor,
+        tickfont: { size: 13 }, zeroline: false,
+        type: yScale === 'log10' ? 'log' : 'linear',
+        autorange: invertY ? 'reversed' : true,
+        ...buildAxisFormat(yScale),
+        ...(yRange0 ? niceTicksForCustomScale(yScale, yRange0[0], yRange0[1], yExpOffset) : {})
+      },
+      showlegend: false,
+      dragmode: state.dragMode,
+      shapes: [], annotations: []
+    };
+
+    const config = { responsive: true, displaylogo: false, displayModeBar: false };
+
+    // Attach the series data for auto-scale / view-history; cleaned up in plotFromSelections.
+    const spec = { data: traces, layout, config };
+    spec._sliceSeries = {
+      x, y,
+      xLower: null, xUpper: null, yLower: null, yUpper: null,
+      yerrPlus: null, yerrMinus: null, xerrPlus: null, xerrMinus: null,
+      validYerr: 0, dropped: 0, droppedYerr: 0, origIndices: null,
+      _imageMode: true, _isImageHeatmap: false
+    };
+    return spec;
   }
 
   // ---------------------------------------------------------------------------

@@ -1198,3 +1198,43 @@ body.dark-mode .mini-slider {
 .controls.is-hist1d #xControl,
 .controls.is-hist1d #xScaleControl,
 .controls.is-hist1d #xLabelControl { grid-column: 1 / -1; }
+
+/* ── Image / Series plot-type visibility ─────────────────────────────── */
+
+/* image-row: hidden by default; shown as flex row in image/imgslice modes */
+.image-row { display: none; }
+.controls.is-image .image-row,
+.controls.is-imgslice .image-row { display: flex; flex-wrap: wrap; gap: 16px; }
+
+/* image-mode-only: shown only in image mode */
+.image-mode-only { display: none; }
+.controls.is-image .image-mode-only { display: grid; }
+
+/* imgslice-mode-only: shown only in imgslice mode */
+.imgslice-mode-only { display: none; }
+.controls.is-imgslice .imgslice-mode-only { display: grid; }
+
+/* Hide the table-specific settings grid entirely in image/imgslice modes */
+.controls.is-image .settings-grid,
+.controls.is-imgslice .settings-grid { display: none; }
+
+/* Hide hist row in image/imgslice modes (already hidden by .hist-only default,
+   but be explicit to prevent accidental class interaction) */
+.controls.is-image .hist-only,
+.controls.is-imgslice .hist-only { display: none; }
+
+/* Hide step-only / scatter-only in image/imgslice modes */
+.controls.is-image .step-only,
+.controls.is-image .scatter-only,
+.controls.is-imgslice .step-only,
+.controls.is-imgslice .scatter-only { display: none; }
+
+/* image-any: shown in both image and imgslice modes */
+.image-any { display: none; }
+.controls.is-image .image-any,
+.controls.is-imgslice .image-any { display: grid; }
+
+/* image-label-row: X/Y label inputs shown below title in image/imgslice modes */
+.image-label-row { display: none; }
+.controls.is-image .image-label-row,
+.controls.is-imgslice .image-label-row { display: flex; flex-wrap: wrap; gap: 16px; }

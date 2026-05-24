@@ -68,6 +68,112 @@
                   <option value="spec">Step</option>
                   <option value="hist1d">Hist (1D)</option>
                   <option value="hist2d">Hist (2D)</option>
+                  <option value="image">Image</option>
+                  <option value="imgslice">Series</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Image HDU controls (visible only in Image / Series modes) -->
+            <div class="image-row" id="imageOptionsRow">
+              <!-- Image mode only: color scale + invert + equal aspect -->
+              <div class="control image-mode-only" id="imageColorScaleControl">
+                <label for="imageColorScaleSelect">Colormap</label>
+                <select id="imageColorScaleSelect" aria-label="Image colormap">
+                  <option value="Viridis" selected>Viridis</option>
+                  <option value="Greys">Gray</option>
+                  <option value="Hot">Hot</option>
+                  <option value="RdBu">RdBu</option>
+                  <option value="Electric">Electric</option>
+                  <option value="Earth">Earth</option>
+                  <option value="Blackbody">Blackbody</option>
+                </select>
+              </div>
+              <div class="control image-mode-only" id="imageInvertColorControl">
+                <label>Colors</label>
+                <label class="mini-switch" title="Reverse the colormap">
+                  <input type="checkbox" id="imageInvertColorToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Invert</span>
+                </label>
+              </div>
+              <div class="control image-mode-only" id="imageColorBarScaleControl">
+                <label for="imageColorBarScaleSelect">Stretch</label>
+                <select id="imageColorBarScaleSelect" aria-label="Image color stretch">
+                  <option value="linear" selected>Linear</option>
+                  <option value="sqrt">Sqrt</option>
+                  <option value="log">Log</option>
+                  <option value="asinh">Asinh</option>
+                </select>
+              </div>
+              <div class="control image-mode-only" id="imageEqualAspectControl">
+                <label>Aspect</label>
+                <label class="mini-switch" title="Lock pixel aspect ratio (each pixel appears square)">
+                  <input type="checkbox" id="imageEqualAspectToggle" checked />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Equal</span>
+                </label>
+              </div>
+              <!-- Image/Series shared: X invert -->
+              <div class="control image-any" id="imageXInvertControl">
+                <label>X Axis</label>
+                <label class="mini-switch" title="Invert X axis (flip horizontal)">
+                  <input type="checkbox" id="imageXInvertToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Invert</span>
+                </label>
+              </div>
+              <!-- Image mode only: Y invert and axes coordinate system -->
+              <div class="control image-mode-only" id="imageYAxisInvertControl">
+                <label>Y Axis</label>
+                <label class="mini-switch" title="Invert Y axis (flip vertical)">
+                  <input type="checkbox" id="imageYAxisInvertToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Invert</span>
+                </label>
+              </div>
+              <div class="control image-mode-only" id="imageAxesWcsControl">
+                <label for="imageAxesSelect">Axes</label>
+                <select id="imageAxesSelect" aria-label="Image axes coordinate system">
+                  <option value="pixel" selected>Pixel</option>
+                  <option value="wcs">WCS</option>
+                </select>
+              </div>
+              <!-- Series mode only: slice controls + Y scale -->
+              <div class="control imgslice-mode-only" id="imageSliceAxisControl">
+                <label for="imageSliceAxisSelect">Show Axis</label>
+                <select id="imageSliceAxisSelect" aria-label="Slice axis">
+                  <option value="x" selected>X (vary X, fix Y)</option>
+                  <option value="y">Y (vary Y, fix X)</option>
+                </select>
+              </div>
+              <div class="control imgslice-mode-only" id="imageSliceIndexControl">
+                <label for="imageSliceIndexInput">Slice Index</label>
+                <input type="number" id="imageSliceIndexInput" min="0" step="1" value="0" autocomplete="off" />
+              </div>
+              <div class="control imgslice-mode-only" id="imageWcsControl">
+                <label>WCS</label>
+                <label class="mini-switch" title="Show world-coordinate values on the spatial axis (requires CRVAL/CRPIX/CDELT in header)">
+                  <input type="checkbox" id="imageWcsToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Coords</span>
+                </label>
+              </div>
+              <div class="control imgslice-mode-only" id="imageYScaleControl">
+                <div class="err-header">
+                  <label for="imageYScaleSelect">Y Scale</label>
+                  <label class="mini-switch" title="Invert Y axis">
+                    <input type="checkbox" id="imageYInvertToggle" />
+                    <span class="mini-slider"></span>
+                    <span class="mini-label">Invert</span>
+                  </label>
+                </div>
+                <select id="imageYScaleSelect" aria-label="Y scale for series mode">
+                  <option value="linear" selected>Linear</option>
+                  <option value="log10">Log10</option>
+                  <option value="exp">Exp</option>
+                  <option value="sinh">Sinh</option>
+                  <option value="asinh">Asinh</option>
                 </select>
               </div>
             </div>
@@ -91,6 +197,26 @@
                   <option value="sinh">Sinh</option>
                   <option value="asinh">Asinh</option>
                 </select>
+              </div>
+              <div class="control hist2d-only" id="histColorScaleControl">
+                <label for="histColorScaleSelect">Colormap</label>
+                <select id="histColorScaleSelect" aria-label="Hist2D colormap">
+                  <option value="default" selected>Default</option>
+                  <option value="Viridis">Viridis</option>
+                  <option value="Hot">Hot</option>
+                  <option value="Greys">Greys</option>
+                  <option value="Electric">Electric</option>
+                  <option value="Earth">Earth</option>
+                  <option value="Blackbody">Blackbody</option>
+                </select>
+              </div>
+              <div class="control hist2d-only" id="histInvertColorControl">
+                <label>Invert</label>
+                <label class="mini-switch" title="Reverse the colormap">
+                  <input type="checkbox" id="histInvertColorToggle" />
+                  <span class="mini-slider"></span>
+                  <span class="mini-label">Invert</span>
+                </label>
               </div>
               <div class="control hist2d-only" id="histMarginalControl">
                 <label>Marginal</label>
@@ -251,6 +377,18 @@
               <div class="control">
                 <label for="customTitle">Plot Title</label>
                 <input type="text" id="customTitle" placeholder="Filename" autocomplete="off" />
+              </div>
+            </div>
+
+            <!-- X/Y axis labels for image/series modes (below title) -->
+            <div class="image-label-row">
+              <div class="control" id="imageXLabelControl">
+                <label for="imageXLabelInput">X Label</label>
+                <input type="text" id="imageXLabelInput" placeholder="Auto" autocomplete="off" />
+              </div>
+              <div class="control" id="imageYLabelControl">
+                <label for="imageYLabelInput">Y Label</label>
+                <input type="text" id="imageYLabelInput" placeholder="Auto" autocomplete="off" />
               </div>
             </div>
           </section>
