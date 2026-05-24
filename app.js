@@ -3030,37 +3030,50 @@
 
   function autoscaleAxes(tab, includeXErr, includeYErr) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    // Image heatmap: auto-scale to show the full image extent
+    // Image heatmap: reset both axes via autorange so Plotly refits the full
+    // image correctly even when yaxis.scaleanchor is active.  Setting explicit
+    // yaxis.range while scaleanchor is live causes Plotly to override it and
+    // clip the image; autorange + scaleanchor is the supported combination.
     if (tab.lastSeries._isImageHeatmap) {
-      const n1   = tab.lastSeries._naxis1 || 0;
-      const n2   = tab.lastSeries._naxis2 || 0;
-      const xR   = tab.lastSeries._xRange || [-0.5, n1 - 0.5];
-      const yR   = tab.lastSeries._yRange || [-0.5, n2 - 0.5];
       window.Plotly.relayout(elements.plot, {
-        'xaxis.autorange': false, 'xaxis.range': xR,
-        'yaxis.autorange': false, 'yaxis.range': yR
+        'xaxis.autorange': tab.invertX ? 'reversed' : true,
+        'yaxis.autorange': tab.invertY ? 'reversed' : true
+      });
+      return;
+    }
+    // Hist plots: series.x/y hold raw data values, not axis-space values.
+    // computeXRange/computeYRange would return wrong results for non-linear
+    // scales (sinh, asinh, exp) because those expect pre-transformed values.
+    // Let Plotly refit from the trace data which IS already in axis space.
+    if (tab.lastSeries._histMode) {
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': tab.invertX ? 'reversed' : true,
+        // hist1d Y is always linear counts/density — no invertY
+        'yaxis.autorange': tab.lastSeries._hist1d ? true : (tab.invertY ? 'reversed' : true)
       });
       return;
     }
     const xRange = invertRange(computeXRange(tab.lastSeries, includeXErr, tab.xScale), tab.invertX);
+    const yRange = invertRange(computeYRange(tab.lastSeries, includeYErr, tab.yScale), tab.invertY);
     const update = {};
     if (xRange) { update['xaxis.autorange'] = false; update['xaxis.range'] = xRange; }
-    if (tab.lastSeries._hist1d) {
-      // Hist1d y-axis is Plotly-managed counts/density — reset to autorange.
-      update['yaxis.autorange'] = true;
-    } else {
-      const yRange = invertRange(computeYRange(tab.lastSeries, includeYErr, tab.yScale), tab.invertY);
-      if (yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = yRange; }
-    }
+    if (yRange) { update['yaxis.autorange'] = false; update['yaxis.range'] = yRange; }
     if (Object.keys(update).length) window.Plotly.relayout(elements.plot, update);
   }
 
   function autoscaleXAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
     if (tab.lastSeries._isImageHeatmap) {
-      const n1 = tab.lastSeries._naxis1 || 0;
-      const xR = tab.lastSeries._xRange || [-0.5, n1 - 0.5];
-      window.Plotly.relayout(elements.plot, { 'xaxis.autorange': false, 'xaxis.range': xR });
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': tab.invertX ? 'reversed' : true
+      });
+      return;
+    }
+    // See autoscaleAxes for why hist mode uses Plotly autorange.
+    if (tab.lastSeries._histMode) {
+      window.Plotly.relayout(elements.plot, {
+        'xaxis.autorange': tab.invertX ? 'reversed' : true
+      });
       return;
     }
     const range = invertRange(computeXRange(tab.lastSeries, includeError, tab.xScale), tab.invertX);
@@ -3071,14 +3084,17 @@
   function autoscaleYAxis(tab, includeError) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
     if (tab.lastSeries._isImageHeatmap) {
-      const n2 = tab.lastSeries._naxis2 || 0;
-      const yR = tab.lastSeries._yRange || [-0.5, n2 - 0.5];
-      window.Plotly.relayout(elements.plot, { 'yaxis.autorange': false, 'yaxis.range': yR });
+      window.Plotly.relayout(elements.plot, {
+        'yaxis.autorange': tab.invertY ? 'reversed' : true
+      });
       return;
     }
-    if (tab.lastSeries._hist1d) {
-      // Hist1d y-axis is Plotly-managed counts/density — reset to autorange.
-      window.Plotly.relayout(elements.plot, { 'yaxis.autorange': true });
+    // See autoscaleAxes for why hist mode uses Plotly autorange.
+    if (tab.lastSeries._histMode) {
+      // hist1d Y is always linear counts/density — no invertY
+      window.Plotly.relayout(elements.plot, {
+        'yaxis.autorange': tab.lastSeries._hist1d ? true : (tab.invertY ? 'reversed' : true)
+      });
       return;
     }
     const range = invertRange(computeYRange(tab.lastSeries, includeError, tab.yScale), tab.invertY);
@@ -3142,34 +3158,30 @@
 
   function applyFloors(tab, doX, doY) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const fl     = elements.plot && elements.plot._fullLayout;
+    if (tab.lastSeries._isImageHeatmap) return;
+    const fl = elements.plot && elements.plot._fullLayout;
+    if (!fl) return;
     const update = {};
-    if (doX) {
-      const xRange = computeXRange(tab.lastSeries, false, tab.xScale);
-      if (xRange) {
-        const cur    = fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null;
-        const natMin = cur ? Math.min(cur[0], cur[1]) : xRange[0];
-        const natMax = cur ? Math.max(cur[0], cur[1]) : xRange[1];
-        const flrX   = computeXFloor(tab, tab.lastSeries, xRange[0]);
-        if (Number.isFinite(natMin) && Number.isFinite(natMax) && Number.isFinite(flrX) &&
-            natMin < flrX && flrX < natMax) {
-          update['xaxis.autorange'] = false;
-          update['xaxis.range']     = tab.invertX ? [natMax, flrX] : [flrX, natMax];
-        }
+    if (doX && fl.xaxis && Array.isArray(fl.xaxis.range)) {
+      const cur   = fl.xaxis.range;
+      const natLo = Math.min(cur[0], cur[1]);   // lower data value regardless of axis direction
+      const natHi = Math.max(cur[0], cur[1]);
+      const flrX  = computeXFloor(tab, tab.lastSeries, natLo);
+      if (Number.isFinite(natLo) && Number.isFinite(natHi) && Number.isFinite(flrX) &&
+          natLo < flrX && flrX < natHi) {
+        update['xaxis.autorange'] = false;
+        update['xaxis.range']     = tab.invertX ? [natHi, flrX] : [flrX, natHi];
       }
     }
-    if (doY) {
-      const yRange = computeYRange(tab.lastSeries, false, tab.yScale);
-      if (yRange) {
-        const cur    = fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null;
-        const natMin = cur ? Math.min(cur[0], cur[1]) : yRange[0];
-        const natMax = cur ? Math.max(cur[0], cur[1]) : yRange[1];
-        const flrY   = computeYFloor(tab, tab.lastSeries, yRange[0]);
-        if (Number.isFinite(natMin) && Number.isFinite(natMax) && Number.isFinite(flrY) &&
-            natMin < flrY && flrY < natMax) {
-          update['yaxis.autorange'] = false;
-          update['yaxis.range']     = tab.invertY ? [natMax, flrY] : [flrY, natMax];
-        }
+    if (doY && fl.yaxis && Array.isArray(fl.yaxis.range)) {
+      const cur   = fl.yaxis.range;
+      const natLo = Math.min(cur[0], cur[1]);
+      const natHi = Math.max(cur[0], cur[1]);
+      const flrY  = computeYFloor(tab, tab.lastSeries, natLo);
+      if (Number.isFinite(natLo) && Number.isFinite(natHi) && Number.isFinite(flrY) &&
+          natLo < flrY && flrY < natHi) {
+        update['yaxis.autorange'] = false;
+        update['yaxis.range']     = tab.invertY ? [natHi, flrY] : [flrY, natHi];
       }
     }
     if (Object.keys(update).length) window.Plotly.relayout(elements.plot, update);
@@ -3177,50 +3189,72 @@
 
   function applyXFloor(tab) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const range = computeXRange(tab.lastSeries, false, tab.xScale);
-    if (!range) return;
-    const fl           = elements.plot && elements.plot._fullLayout;
-    const currentRange = fl && fl.xaxis && Array.isArray(fl.xaxis.range) ? fl.xaxis.range : null;
-    const natMin       = currentRange ? Math.min(currentRange[0], currentRange[1]) : range[0];
-    const natMax       = currentRange ? Math.max(currentRange[0], currentRange[1]) : range[1];
-    const floor        = computeXFloor(tab, tab.lastSeries, range[0]);
-    if (!Number.isFinite(natMin) || !Number.isFinite(natMax) || !Number.isFinite(floor)) return;
-    if (natMin >= floor || floor >= natMax) return;
+    if (tab.lastSeries._isImageHeatmap) return;
+    // Only use the live Plotly range — do NOT fall back to computeXRange.
+    // The fallback path's 5 % padding can make natLo appear negative even when
+    // the displayed lower bound is positive, spuriously triggering the floor.
+    const fl = elements.plot && elements.plot._fullLayout;
+    if (!fl || !fl.xaxis || !Array.isArray(fl.xaxis.range)) return;
+    const cur   = fl.xaxis.range;
+    const natLo = Math.min(cur[0], cur[1]);   // physical lower bound, direction-independent
+    const natHi = Math.max(cur[0], cur[1]);
+    const floor = computeXFloor(tab, tab.lastSeries, natLo);
+    if (!Number.isFinite(floor) || !Number.isFinite(natLo) || !Number.isFinite(natHi)) return;
+    if (natLo >= floor || floor >= natHi) return;   // already positive (or floor above view)
     window.Plotly.relayout(elements.plot, {
       'xaxis.autorange': false,
-      'xaxis.range': tab.invertX ? [natMax, floor] : [floor, natMax]
+      'xaxis.range': tab.invertX ? [natHi, floor] : [floor, natHi]
     });
   }
 
   function applyYFloor(tab) {
     if (!window.Plotly || !tab || !tab.lastSeries) return;
-    const range = computeYRange(tab.lastSeries, false, tab.yScale);
-    if (!range) return;
-    const fl           = elements.plot && elements.plot._fullLayout;
-    const currentRange = fl && fl.yaxis && Array.isArray(fl.yaxis.range) ? fl.yaxis.range : null;
-    const natMin       = currentRange ? Math.min(currentRange[0], currentRange[1]) : range[0];
-    const natMax       = currentRange ? Math.max(currentRange[0], currentRange[1]) : range[1];
-    const floor        = computeYFloor(tab, tab.lastSeries, range[0]);
-    if (!Number.isFinite(natMin) || !Number.isFinite(natMax) || !Number.isFinite(floor)) return;
-    if (natMin >= floor || floor >= natMax) return;
+    if (tab.lastSeries._isImageHeatmap) return;
+    const fl = elements.plot && elements.plot._fullLayout;
+    if (!fl || !fl.yaxis || !Array.isArray(fl.yaxis.range)) return;
+    const cur   = fl.yaxis.range;
+    const natLo = Math.min(cur[0], cur[1]);
+    const natHi = Math.max(cur[0], cur[1]);
+    const floor = computeYFloor(tab, tab.lastSeries, natLo);
+    if (!Number.isFinite(floor) || !Number.isFinite(natLo) || !Number.isFinite(natHi)) return;
+    if (natLo >= floor || floor >= natHi) return;
     window.Plotly.relayout(elements.plot, {
       'yaxis.autorange': false,
-      'yaxis.range': tab.invertY ? [natMax, floor] : [floor, natMax]
+      'yaxis.range': tab.invertY ? [natHi, floor] : [floor, natHi]
     });
   }
 
   function computeXFloor(tab, series, minValue) {
-    if (tab.xScale === 'log10') {
-      const mp = findMinPositive(series.x, series.xLower);
-      return Number.isFinite(mp) ? Math.log10(mp) : minValue;
+    const scale = tab.xScale || 'linear';
+    if (scale === 'log10') {
+      // A log10 axis can only represent positive values by definition, so
+      // "Limit Positive" has no meaningful action here — return NaN to signal
+      // that the floor button should be a no-op for this axis.
+      return NaN;
     }
+    if (scale === 'exp') {
+      // Data value 0 in exp-axis space = exp(0 − expOffset) = exp(−expOffset).
+      // The exp axis is always positive; this is the floor that corresponds to
+      // original data value 0 (rather than the meaningless axis value 0).
+      return Math.exp(-(tab._lastXExpOffset || 0));
+    }
+    // linear, sinh, asinh: axis value 0 corresponds to data value 0.
     return 0;
   }
 
   function computeYFloor(tab, series, minValue) {
-    if (tab.yScale === 'log10') {
-      const mp = findMinPositive(series.y, series.yLower);
-      return Number.isFinite(mp) ? Math.log10(mp) : minValue;
+    // hist1d Y axis is always linear counts/density — it is independent of
+    // tab.yScale (which may reflect a previous scatter plot's Y data scale).
+    // The floor for counts is always 0.
+    if (series && series._hist1d) return 0;
+    const scale = tab.yScale || 'linear';
+    if (scale === 'log10') {
+      // Same reasoning as computeXFloor: log10 axis is inherently all-positive,
+      // so "Limit Positive" is a no-op.
+      return NaN;
+    }
+    if (scale === 'exp') {
+      return Math.exp(-(tab._lastYExpOffset || 0));
     }
     return 0;
   }
